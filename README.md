@@ -42,6 +42,10 @@ npm run dev
 
 La base principal arranca vacía, porque el importador de datos personales no forma parte del repositorio. Para ver la app con contenido, usá "Entrar como invitado".
 
+## Publicación
+
+Cada cambio que llega a `main` se publica solo en Vercel. Las migraciones de la base se aplican aparte, con `npm run db:migrate`.
+
 ## Reglas de cálculo
 
 - Una compra suma completa el día que se hizo, aunque sea en cuotas. Las cuotas solo muestran lo comprometido a futuro.
