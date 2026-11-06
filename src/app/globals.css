@@ -36,6 +36,25 @@
   --font-sans: var(--font-geist-sans);
 }
 
+html {
+  /* Sin zoom con dos dedos ni doble toque; el desplazamiento sigue funcionando */
+  touch-action: pan-x pan-y;
+}
+
+/* En pantallas táctiles no se muestra la barrita de desplazamiento */
+@media (pointer: coarse) {
+  html,
+  body,
+  dialog.sheet {
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar,
+  dialog.sheet::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 body {
   background: var(--bg);
   color: var(--text);

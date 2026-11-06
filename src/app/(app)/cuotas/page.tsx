@@ -39,6 +39,14 @@ function PlanFields({
   );
 }
 
+function OtherPersonBadge({ person }: { person: string }) {
+  return (
+    <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent-hover">
+      Paga {person}
+    </span>
+  );
+}
+
 function PlanDelete({ plan }: { plan: Plan }) {
   if (!plan.debtId) {
     return (
@@ -132,10 +140,12 @@ export default async function InstallmentsPage() {
             )}
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate">{p.description}</p>
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="min-w-0 break-words">{p.description}</span>
+                  {p.otherPerson && <OtherPersonBadge person={p.otherPerson} />}
+                </p>
                 <p className="text-xs text-muted">
                   {p.method ?? "Sin tarjeta"} · termina en {monthName(p.lastMonth)}
-                  {p.otherPerson && ` · la paga ${p.otherPerson}`}
                 </p>
               </div>
               <div className="shrink-0">
@@ -174,7 +184,10 @@ export default async function InstallmentsPage() {
                     <PlanDelete plan={p} />
                   </EditSheet>
                 )}
-                <span className="truncate">{p.description}</span>
+                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="min-w-0 break-words">{p.description}</span>
+                  {p.otherPerson && <OtherPersonBadge person={p.otherPerson} />}
+                </span>
                 <span className="num shrink-0 text-sm">{p.totalAmount != null && money(p.totalAmount, p.currency)}</span>
               </div>
             ))}

@@ -10,6 +10,7 @@ import {
   useState,
   useTransition,
   type FormEvent,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import type { ActionResult } from "@/app/actions";
@@ -58,6 +59,15 @@ export function Sheet({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const ownsLock = useRef(false);
+  const pressedOutside = useRef(false);
+  // Un toque en el fondo llega como evento del propio dialog, con coordenadas fuera de su caja.
+  const isOutside = (event: MouseEvent<HTMLDialogElement>) => {
+    if (event.target !== event.currentTarget) return false;
+    const box = event.currentTarget.getBoundingClientRect();
+    return (
+      event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom
+    );
+  };
   const release = () => {
     if (!ownsLock.current) return;
     ownsLock.current = false;
@@ -90,7 +100,20 @@ export function Sheet({
       >
         {trigger}
       </button>
-      <dialog ref={ref} className="sheet" tabIndex={-1} onClose={release}>
+      <dialog
+        ref={ref}
+        className="sheet"
+        tabIndex={-1}
+        onClose={release}
+        // Tiene que empezar y terminar afuera: arrastrar desde un campo no cierra la ventana.
+        onPointerDown={(event) => {
+          pressedOutside.current = isOutside(event);
+        }}
+        onClick={(event) => {
+          if (pressedOutside.current && isOutside(event)) close();
+          pressedOutside.current = false;
+        }}
+      >
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button

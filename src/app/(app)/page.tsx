@@ -77,7 +77,7 @@ export default async function HomePage() {
       <div className="card py-1">
         {recents.length === 0 && <Empty>Todavía no cargaste gastos este mes.</Empty>}
         {recents.map((e) => (
-          <Link key={e.id} href={`/gastos/${e.id}`} prefetch={false} className="row">
+          <Link key={e.id} href="/gastos" className="row">
             <div className="min-w-0">
               <p className="truncate">{e.description}</p>
               <p className="text-xs text-muted">

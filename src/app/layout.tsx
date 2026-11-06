@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
+import { NoZoom } from "@/components/no-zoom";
 import "./globals.css";
 
 const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -14,12 +15,17 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#0e0b14",
   viewportFit: "cover",
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es-AR" className={`${geist.variable} h-full antialiased`}>
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        <NoZoom />
+        {children}
+      </body>
     </html>
   );
 }
