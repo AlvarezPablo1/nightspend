@@ -1,4 +1,6 @@
 import { logout } from "@/app/actions";
+import { Suspense } from "react";
+import { NavigationLoader } from "@/components/navigation-loader";
 import { Nav } from "@/components/nav";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/format";
@@ -23,6 +25,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   };
   return (
     <>
+      <Suspense>
+        <NavigationLoader />
+      </Suspense>
       <Nav options={options} />
       <main className="mx-auto w-full max-w-3xl px-4 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-[calc(88px+env(safe-area-inset-bottom))] md:pb-12 md:pl-64 md:pr-8 md:max-w-none">
         <div className="mx-auto max-w-3xl">

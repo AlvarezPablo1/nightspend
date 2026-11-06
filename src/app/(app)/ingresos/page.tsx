@@ -77,17 +77,9 @@ function IncomeFields({
         listId={`origenes-${income?.id ?? "nuevo"}`}
         origins={origins}
       />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Tipo">
-          <select name="type" defaultValue={income?.type ?? "variable"} className="input">
-            <option value="fijo">Fijo</option>
-            <option value="variable">Variable</option>
-          </select>
-        </Field>
-        <Field label="Fecha">
-          <input type="date" name="date" required defaultValue={income?.date ?? defaultDate} className="input" />
-        </Field>
-      </div>
+      <Field label="Fecha">
+        <input type="date" name="date" required defaultValue={income?.date ?? defaultDate} className="input" />
+      </Field>
       <Field label="Nota (opcional)">
         <input name="note" defaultValue={income?.note ?? ""} autoComplete="off" className="input" />
       </Field>

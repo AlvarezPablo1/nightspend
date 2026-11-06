@@ -2,7 +2,8 @@
 
 import { List, Table2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useEffect, useTransition } from "react";
+import { LOADING_EVENT } from "./navigation-loader";
 import { VIEW_COOKIE, type ExpenseView } from "@/lib/expense-view";
 
 const OPTIONS = [
@@ -13,7 +14,11 @@ const OPTIONS = [
 /** Recuerda la vista elegida en una cookie, así se mantiene al cambiar de mes. */
 export function ViewToggle({ view }: { view: ExpenseView }) {
   const router = useRouter();
-  const [, start] = useTransition();
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(LOADING_EVENT, { detail: pending }));
+  }, [pending]);
 
   function choose(value: ExpenseView) {
     document.cookie = `${VIEW_COOKIE}=${value}; path=/; max-age=31536000; samesite=lax`;

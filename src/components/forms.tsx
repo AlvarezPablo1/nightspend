@@ -19,6 +19,29 @@ type ServerAction = (form: FormData) => Promise<ActionResult>;
 
 const SheetContext = createContext<{ close: () => void } | null>(null);
 
+// iOS sigue desplazando la página detrás de un dialog si no se fija el body.
+let lockedScrollY: number | null = null;
+
+function lockPageScroll() {
+  if (lockedScrollY !== null) return;
+  lockedScrollY = window.scrollY;
+  Object.assign(document.body.style, {
+    position: "fixed",
+    top: `-${lockedScrollY}px`,
+    left: "0",
+    right: "0",
+    width: "100%",
+  });
+}
+
+function unlockPageScroll() {
+  if (lockedScrollY === null) return;
+  const y = lockedScrollY;
+  lockedScrollY = null;
+  Object.assign(document.body.style, { position: "", top: "", left: "", right: "", width: "" });
+  window.scrollTo({ top: y, behavior: "instant" });
+}
+
 /** Panel inferior en el celular y modal centrado en la compu. */
 export function Sheet({
   trigger,
@@ -34,18 +57,40 @@ export function Sheet({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const close = () => ref.current?.close();
+  const ownsLock = useRef(false);
+  const release = () => {
+    if (!ownsLock.current) return;
+    ownsLock.current = false;
+    unlockPageScroll();
+  };
+  const close = () => {
+    ref.current?.close();
+    release();
+  };
+  const open = () => {
+    ownsLock.current = true;
+    lockPageScroll();
+    ref.current?.showModal();
+    // El foco queda en la ventana: sin recuadro en la cruz y sin abrir el teclado solo.
+    ref.current?.focus();
+  };
+  // Si el ítem desaparece con la ventana abierta (por ejemplo, al borrarlo), se libera igual.
+  useEffect(() => {
+    return () => {
+      if (ownsLock.current) unlockPageScroll();
+    };
+  }, []);
   return (
     <>
       <button
         type="button"
         className={triggerClassName}
         aria-label={triggerLabel}
-        onClick={() => ref.current?.showModal()}
+        onClick={open}
       >
         {trigger}
       </button>
-      <dialog ref={ref} className="sheet">
+      <dialog ref={ref} className="sheet" tabIndex={-1} onClose={release}>
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button

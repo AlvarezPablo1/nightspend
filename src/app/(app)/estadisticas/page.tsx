@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BarChart, type Bar } from "@/components/bar-chart";
 import { Empty, MonthNav, PageTitle, Progress, SectionTitle, Stat, Tabs, YearNav } from "@/components/ui";
@@ -46,7 +45,7 @@ function TopList({ rows }: { rows: Awaited<ReturnType<typeof topExpenses>> }) {
   return (
     <>
       {rows.map((e) => (
-        <Link key={e.id} href={`/gastos/${e.id}`} className="row">
+        <div key={e.id} className="row">
           <div className="min-w-0">
             <p className="truncate">{e.description}</p>
             <p className="text-xs text-muted">
@@ -54,7 +53,7 @@ function TopList({ rows }: { rows: Awaited<ReturnType<typeof topExpenses>> }) {
             </p>
           </div>
           <span className="num shrink-0">{money(e.amountArs)}</span>
-        </Link>
+        </div>
       ))}
     </>
   );

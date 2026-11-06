@@ -1,8 +1,9 @@
-import { Search } from "lucide-react";
 import { cookies } from "next/headers";
+import Form from "next/form";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Empty, MonthNav, PageTitle, Tabs, YearNav } from "@/components/ui";
+import { SearchInput } from "@/components/search-input";
 import { ViewToggle } from "@/components/view-toggle";
 import { VIEW_COOKIE } from "@/lib/expense-view";
 import { currentMonth, dayLabel, isMonth, isYear, money, monthName, monthRange, yearsOf } from "@/lib/format";
@@ -38,7 +39,7 @@ function ExpenseTable({ rows }: { rows: Awaited<ReturnType<typeof expenseList>> 
               </td>
               <td className="td wrap-break-word">
                 {/* El link cubre toda la fila para abrir el gasto desde cualquier celda. */}
-                <Link href={`/gastos/${e.id}`} className="after:absolute after:inset-0">
+                <Link href={`/gastos/${e.id}`} prefetch={false} className="after:absolute after:inset-0">
                   {e.description}
                 </Link>
                 <span className="block text-xs text-muted sm:hidden">
@@ -132,10 +133,10 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
   for (const e of list) days.set(e.date, [...(days.get(e.date) ?? []), e]);
   const total = list.reduce((sum, e) => sum + e.amountArs, 0);
 
-  const chipHref = (cat?: number) => {
+  const chipHref = (cat?: number, keepSearch = true) => {
     const query = new URLSearchParams({ mes: month });
     if (cat) query.set("cat", String(cat));
-    if (q) query.set("q", q);
+    if (q && keepSearch) query.set("q", q);
     return `/gastos?${query}`;
   };
 
@@ -148,19 +149,11 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
       <p className="num mt-1 mb-4 text-center text-3xl font-semibold tracking-tight">{money(total)}</p>
 
       <div className="mb-3 flex items-center gap-2">
-        <form className="relative min-w-0 flex-1">
+        <Form action="/gastos" className="relative min-w-0 flex-1">
           <input type="hidden" name="mes" value={month} />
           {categoryId && <input type="hidden" name="cat" value={categoryId} />}
-          <Search size={18} className="pointer-events-none absolute top-3.5 left-3 text-muted" />
-          <input
-            name="q"
-            type="search"
-            defaultValue={q}
-            aria-label="Buscar gastos"
-            placeholder="Buscar en este mes"
-            className="input pl-10!"
-          />
-        </form>
+          <SearchInput key={q ?? ""} defaultValue={q} clearHref={chipHref(categoryId, false)} />
+        </Form>
         <ViewToggle view={view} />
       </div>
 
@@ -187,7 +180,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
               </div>
               <div className="card py-0.5">
                 {items.map((e) => (
-                  <Link key={e.id} href={`/gastos/${e.id}`} className="row">
+                  <Link key={e.id} href={`/gastos/${e.id}`} prefetch={false} className="row">
                     <div className="min-w-0">
                       <p className="truncate">{e.description}</p>
                       <p className="truncate text-xs text-muted">

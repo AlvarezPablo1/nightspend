@@ -354,7 +354,8 @@ export const saveIncome = action(async (f) => {
   const values = {
     date,
     description: required(f, "description", "de dónde viene el ingreso"),
-    type: str(f, "type") === "fijo" ? ("fijo" as const) : ("variable" as const),
+    // Lo que se carga a mano es variable; lo fijo lo registran los trabajos fijos.
+    type: saved?.type ?? ("variable" as const),
     amount: cents,
     currency: cur,
     note: optional(f, "note"),
