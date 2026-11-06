@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-dvh items-center justify-center p-4">
+    <main className="flex min-h-dvh items-center justify-center p-4 pt-[calc(1rem+env(safe-area-inset-top))]">
       <div className="w-full max-w-sm">
         <h1 className="mb-6 text-2xl font-semibold tracking-tight">Nightspend</h1>
         <ActionForm action={login} submitLabel="Entrar" pendingLabel="Entrando…">

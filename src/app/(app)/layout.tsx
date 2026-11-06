@@ -24,7 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <>
       <Nav options={options} />
-      <main className="mx-auto w-full max-w-3xl px-4 pt-5 pb-[calc(88px+env(safe-area-inset-bottom))] md:pb-12 md:pl-64 md:pr-8 md:max-w-none">
+      <main className="mx-auto w-full max-w-3xl px-4 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-[calc(88px+env(safe-area-inset-bottom))] md:pb-12 md:pl-64 md:pr-8 md:max-w-none">
         <div className="mx-auto max-w-3xl">
           {session.role === "guest" && (
             <div role="status" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
