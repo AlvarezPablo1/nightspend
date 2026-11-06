@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: gastos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gastos
+      POSTGRES_PASSWORD: gastos
+      POSTGRES_DB: gastos
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - gastos-db:/var/lib/postgresql/data
+volumes:
+  gastos-db:

@@ -1,0 +1,5 @@
+# Datos personales y secretos: nunca se suben
+data/
+scripts/import-excel.ts
+.env*
+docker-compose.yml
