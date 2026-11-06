@@ -191,6 +191,20 @@ body {
   }
 }
 
+/* Separa el indicador del contenido: oscurece y desenfoca lo que queda detrás. */
+.loader-overlay {
+  background: rgb(14 11 20 / 0.55);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: loader-in 0.12s ease-out;
+}
+
+@keyframes loader-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .spinner {
   width: 24px;
   height: 24px;

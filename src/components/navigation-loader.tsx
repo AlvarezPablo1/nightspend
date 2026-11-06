@@ -53,7 +53,7 @@ export function NavigationLoader() {
 
   if (!loading) return null;
   return (
-    <div role="status" aria-label="Cargando" className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center">
+    <div role="status" aria-label="Cargando" className="loader-overlay fixed inset-0 z-40 flex items-center justify-center">
       <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-line bg-surface shadow-lg">
         <span className="spinner" />
       </span>
