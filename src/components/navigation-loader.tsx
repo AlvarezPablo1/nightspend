@@ -2,10 +2,12 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { LoadingOverlay } from "./loading-overlay";
 
 // Si el destino termina siendo la misma pantalla, el indicador no queda colgado.
 const MAX_VISIBLE_MS = 15_000;
 export const LOADING_EVENT = "nightspend:loading";
+const DEFAULT_MESSAGE = "Cargando…";
 const CURRENT_KEY = "nightspend:current";
 const PREVIOUS_KEY = "nightspend:previous";
 
@@ -28,14 +30,14 @@ function isInternalNavigation(event: MouseEvent) {
   return url.pathname + url.search !== location.pathname + location.search;
 }
 
-/** Indicador de carga al cambiar de pantalla: aparece apenas se toca, sin esperar al servidor. */
+/** Loader al cambiar de pantalla: aparece apenas se toca, sin esperar al servidor. */
 export function NavigationLoader() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoading(false);
+    setMessage(null);
     try {
       const search = searchParams.toString();
       const current = pathname + (search ? `?${search}` : "");
@@ -51,13 +53,15 @@ export function NavigationLoader() {
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
-      if (isInternalNavigation(event)) setLoading(true);
+      if (isInternalNavigation(event)) setMessage(DEFAULT_MESSAGE);
     };
     const onSubmit = (event: SubmitEvent) => {
+      // Solo los buscadores navegan: los formularios de acciones no tienen destino propio.
       const form = event.target as HTMLFormElement;
-      if (form.method === "get" && !form.getAttribute("action")?.startsWith("/api/")) setLoading(true);
+      const destination = form.getAttribute("action");
+      if (form.method === "get" && destination && !destination.startsWith("/api/")) setMessage(DEFAULT_MESSAGE);
     };
-    const onLoading = (event: Event) => setLoading((event as CustomEvent<boolean>).detail);
+    const onLoading = (event: Event) => setMessage((event as CustomEvent<string | null>).detail);
     // En captura: los enlaces y formularios de Next cancelan el evento antes de que llegue arriba.
     document.addEventListener("click", onClick, true);
     document.addEventListener("submit", onSubmit, true);
@@ -69,18 +73,12 @@ export function NavigationLoader() {
     };
   }, []);
 
+  const active = message !== null;
   useEffect(() => {
-    if (!loading) return;
-    const timer = setTimeout(() => setLoading(false), MAX_VISIBLE_MS);
+    if (!active) return;
+    const timer = setTimeout(() => setMessage(null), MAX_VISIBLE_MS);
     return () => clearTimeout(timer);
-  }, [loading]);
+  }, [active]);
 
-  if (!loading) return null;
-  return (
-    <div role="status" aria-label="Cargando" className="loader-overlay fixed inset-0 z-40 flex items-center justify-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-line bg-surface shadow-lg">
-        <span className="spinner" />
-      </span>
-    </div>
-  );
+  return message === null ? null : <LoadingOverlay message={message} />;
 }

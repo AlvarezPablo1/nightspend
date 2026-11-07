@@ -98,7 +98,6 @@ function DebtCard({ debt }: { debt: Debt }) {
                   fields={{ id: p.id }}
                   confirm="¿Borrar?"
                   label="Borrar pago"
-                  pendingLabel={null}
                   className="flex h-8 min-w-8 cursor-pointer items-center justify-center"
                 >
                   <X size={14} />

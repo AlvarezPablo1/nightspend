@@ -37,6 +37,8 @@
 }
 
 html {
+  /* Al bloquear el desplazamiento, la página no salta de costado */
+  scrollbar-gutter: stable;
   /* Sin zoom con dos dedos ni doble toque; el desplazamiento sigue funcionando */
   touch-action: pan-x pan-y;
 }
@@ -215,13 +217,11 @@ body {
   background: rgb(14 11 20 / 0.55);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
-  animation: loader-in 0.12s ease-out;
 }
 
-@keyframes loader-in {
-  from {
-    opacity: 0;
-  }
+/* Al guardar y volver, una acción le pasa el relevo a la navegación: se ve uno solo. */
+.loader-overlay ~ .loader-overlay {
+  display: none;
 }
 
 .spinner {
@@ -230,17 +230,6 @@ body {
   border-radius: 50%;
   border: 3px solid var(--border-strong);
   border-top-color: var(--accent);
-  animation: spin 0.7s linear infinite;
-}
-
-.spinner-sm {
-  display: inline-block;
-  flex-shrink: 0;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
   animation: spin 0.7s linear infinite;
 }
 

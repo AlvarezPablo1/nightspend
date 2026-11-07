@@ -46,7 +46,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const isNew = !props.initial?.id && !props.hiddenId;
   // Al terminar de editar, vuelve a la pantalla desde la que se abrió el gasto.
   const goBack = () => {
-    window.dispatchEvent(new CustomEvent(LOADING_EVENT, { detail: true }));
+    window.dispatchEvent(new CustomEvent(LOADING_EVENT, { detail: "Guardando cambios…" }));
     const previous = previousPath();
     if (window.history.length > 1 && previous) router.back();
     else router.push(`/gastos?mes=${props.initial?.date?.slice(0, 7) ?? ""}`);

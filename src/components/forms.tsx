@@ -15,6 +15,7 @@ import {
 } from "react";
 import type { ActionResult } from "@/app/actions";
 import { money, parseMoney, shortDate } from "@/lib/format";
+import { LoadingOverlay } from "./loading-overlay";
 
 type ServerAction = (form: FormData) => Promise<ActionResult>;
 
@@ -189,7 +190,7 @@ export function ActionForm({
   action: ServerAction;
   submitLabel?: string;
   submitClassName?: string;
-  /** Texto mientras se ejecuta. Por defecto distingue entre agregar y guardar cambios. */
+  /** Mensaje del loader. Por defecto distingue entre agregar y guardar cambios. */
   pendingLabel?: string;
   resetOnSuccess?: boolean;
   onSuccess?: () => void;
@@ -236,15 +237,9 @@ export function ActionForm({
         </p>
       )}
       <button type="submit" disabled={pending} className={submitClassName}>
-        {pending ? (
-          <>
-            <span className="spinner-sm" aria-hidden />
-            {runningLabel}
-          </>
-        ) : (
-          submitLabel
-        )}
+        {submitLabel}
       </button>
+      {pending && <LoadingOverlay message={runningLabel} />}
     </form>
   );
 }
@@ -264,14 +259,14 @@ export function ActionButton({
   confirm?: string;
   className?: string;
   label?: string;
-  /** Texto mientras se ejecuta; `null` muestra solo el indicador, para botones chicos. */
-  pendingLabel?: string | null;
+  /** Mensaje del loader. Por defecto, "Eliminando…" si pide confirmación y "Actualizando…" si no. */
+  pendingLabel?: string;
   children: ReactNode;
 }) {
   const sheet = useContext(SheetContext);
   const [pending, start] = useTransition();
   const [armed, setArmed] = useState(false);
-  const runningLabel = pendingLabel === undefined ? (confirm ? "Eliminando…" : "Actualizando…") : pendingLabel;
+  const runningLabel = pendingLabel ?? (confirm ? "Eliminando…" : "Actualizando…");
 
   function run() {
     if (confirm && !armed) {
@@ -290,18 +285,12 @@ export function ActionButton({
   }
 
   return (
-    <button type="button" aria-label={armed || pending ? undefined : label} disabled={pending} onClick={run} className={className}>
-      {pending ? (
-        <>
-          <span className="spinner-sm" aria-hidden />
-          {runningLabel}
-        </>
-      ) : armed ? (
-        confirm
-      ) : (
-        children
-      )}
-    </button>
+    <>
+      <button type="button" aria-label={armed ? undefined : label} disabled={pending} onClick={run} className={className}>
+        {armed ? confirm : children}
+      </button>
+      {pending && <LoadingOverlay message={runningLabel} />}
+    </>
   );
 }
 

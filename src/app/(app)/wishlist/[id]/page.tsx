@@ -110,7 +110,6 @@ export default async function WishItemPage({ params }: { params: Promise<{ id: s
               fields={{ id: step.id }}
               confirm="¿Borrar?"
               label={`Borrar ${step.text}`}
-              pendingLabel={null}
               className="flex h-11 min-w-8 shrink-0 cursor-pointer items-center justify-center text-xs text-muted"
             >
               <X size={15} />

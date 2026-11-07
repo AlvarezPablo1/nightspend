@@ -17,7 +17,7 @@ export function ViewToggle({ view }: { view: ExpenseView }) {
   const [pending, start] = useTransition();
 
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent(LOADING_EVENT, { detail: pending }));
+    window.dispatchEvent(new CustomEvent(LOADING_EVENT, { detail: pending ? "Cargando…" : null }));
   }, [pending]);
 
   function choose(value: ExpenseView) {
