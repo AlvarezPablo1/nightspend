@@ -46,9 +46,9 @@ La base principal arranca vacía, porque el importador de datos personales no fo
 
 Cada cambio que llega a `main` se publica solo en Vercel. Las migraciones de la base se aplican aparte, con `npm run db:migrate`.
 
-## Backup mensual
+## Resúmenes por mail
 
-Vercel llama a `/api/cron/backup` los días 1, 2 y 3 de cada mes. Envía el Excel completo por mail con Resend una sola vez por mes, y si falla reintenta al día siguiente. Necesita `CRON_SECRET`, `RESEND_API_KEY` y `BACKUP_EMAIL`.
+Vercel llama a `/api/cron/backup` los días 1, 2 y 3 de cada mes. Envía con Resend el resumen del mes que terminó y, en enero, también el del año anterior, con su Excel. Cada uno sale una sola vez, y si falla se reintenta al día siguiente. Necesita `CRON_SECRET`, `RESEND_API_KEY` y `BACKUP_EMAIL`.
 
 ## Reglas de cálculo
 

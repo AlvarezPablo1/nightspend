@@ -86,6 +86,12 @@ export function monthRange(month: string) {
   return { from: `${month}-01`, to: `${addMonths(month, 1)}-01` };
 }
 
+/** Rango de un mes (YYYY-MM) o de un año (YYYY). */
+export function periodRange(period: string) {
+  if (period.length === 7) return monthRange(period);
+  return { from: `${period}-01-01`, to: `${Number(period) + 1}-01-01` };
+}
+
 export function daysInMonth(month: string) {
   const [y, m] = month.split("-").map(Number);
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
