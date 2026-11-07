@@ -247,6 +247,69 @@ body {
   }
 }
 
+/* Pantalla de entrada: se muestra solo si el script la activó, en el celular y sin "reducir movimiento" */
+#splash {
+  display: none;
+}
+@media (max-width: 767.98px) and (prefers-reduced-motion: no-preference) {
+  #splash[data-play] {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    animation: splash-end 0s linear 1.3s forwards;
+  }
+}
+#splash svg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  overflow: visible;
+  /* Centro de la barra del medio: al acercarse, es la que termina cubriendo la pantalla */
+  transform-origin: 50% 55.86%;
+  animation: splash-zoom 1.3s linear forwards;
+}
+#splash path {
+  fill: var(--bg);
+}
+#splash g {
+  fill: var(--accent);
+  animation: splash-bars 1.3s linear forwards;
+}
+
+@keyframes splash-zoom {
+  0%,
+  35% {
+    transform: scale(1);
+    animation-timing-function: ease-in-out;
+  }
+  50% {
+    transform: scale(0.88);
+    animation-timing-function: cubic-bezier(0.7, 0, 0.84, 0);
+  }
+  100% {
+    transform: scale(80);
+  }
+}
+@keyframes splash-bars {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  75%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes splash-end {
+  to {
+    visibility: hidden;
+  }
+}
+
 .num {
   font-variant-numeric: tabular-nums;
 }

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { NoZoom } from "@/components/no-zoom";
+import { Splash } from "@/components/splash";
 import "./globals.css";
 
 const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es-AR" className={`${geist.variable} h-full antialiased`}>
       <body className="min-h-full">
+        <Splash />
         <NoZoom />
         {children}
       </body>
