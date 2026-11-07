@@ -137,7 +137,7 @@ function DebtSection({ title, empty, debts }: { title: string; empty: string; de
         {mixed
           ? groups.map((group) => (
               <section key={group.currency} className="not-first:border-t not-first:border-line">
-                <div className="flex items-center justify-between gap-3 pt-4 pb-1 font-semibold">
+                <div className="flex items-center justify-between gap-3 pt-4 pb-1 text-lg font-semibold">
                   <h3>{group.label}</h3>
                   <span className="num">{money(totalRemaining(group.debts), group.currency)}</span>
                 </div>
