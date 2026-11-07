@@ -92,6 +92,26 @@ export function periodRange(period: string) {
   return { from: `${period}-01-01`, to: `${Number(period) + 1}-01-01` };
 }
 
+/** Rango del mes anterior a comparar: en el mes en curso, solo hasta el mismo día. */
+export function comparisonRange(month: string) {
+  const previous = addMonths(month, -1);
+  const { from, to } = monthRange(previous);
+  if (month !== currentMonth()) return { previous, from, to, partial: false };
+  const day = Math.min(Number(today().slice(8)), daysInMonth(previous));
+  return { previous, from, to: addDays(`${previous}-${String(day).padStart(2, "0")}`, 1), partial: true };
+}
+
+/** Cambio respecto de un monto anterior, listo para mostrar. */
+export function changeFrom(current: number, previous: number) {
+  const difference = current - previous;
+  if (previous === 0) {
+    return current === 0 ? null : { direction: "new" as const, percent: null, difference };
+  }
+  const percent = Math.round((Math.abs(difference) / previous) * 100);
+  if (percent === 0) return { direction: "same" as const, percent: 0, difference };
+  return { direction: difference > 0 ? ("up" as const) : ("down" as const), percent, difference };
+}
+
 export function daysInMonth(month: string) {
   const [y, m] = month.split("-").map(Number);
   return new Date(Date.UTC(y, m, 0)).getUTCDate();

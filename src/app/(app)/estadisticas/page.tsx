@@ -1,9 +1,11 @@
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { redirect } from "next/navigation";
 import { BarChart, type Bar } from "@/components/bar-chart";
 import { Empty, MonthNav, PageTitle, Progress, SectionTitle, Stat, Tabs, YearNav } from "@/components/ui";
 import { expenses } from "@/db/schema";
 import {
-  addMonths,
+  changeFrom,
+  comparisonRange,
   currentMonth,
   daysInMonth,
   isMonth,
@@ -20,20 +22,44 @@ import { availableMonths, byCategory, dailyTotals, monthlyTotals, topExpenses, t
 
 const wholePesos = (cents: number) => Math.round(cents / 100) * 100;
 
-function CategoryBars({ rows, total }: { rows: { id: number; name: string; total: number }[]; total: number }) {
-  if (rows.length === 0) return <Empty>Sin datos.</Empty>;
-  const max = rows[0].total;
+function CategoryChange({ current, previous }: { current: number; previous: number }) {
+  const change = changeFrom(current, previous);
+  if (!change) return null;
+  if (change.direction === "new") return <p className="mt-1.5 text-xs text-muted">Sin gastos en ese período</p>;
+  if (change.direction === "same") return <p className="mt-1.5 text-xs text-muted">Igual</p>;
+  const up = change.direction === "up";
+  const Icon = up ? ArrowUp : ArrowDown;
+  return (
+    <p className={`num mt-1.5 flex items-center gap-1 text-xs ${up ? "text-warn" : "text-good"}`}>
+      <Icon size={13} aria-hidden />
+      {up ? "Subió" : "Bajó"} {change.percent}% ({money(Math.abs(change.difference))})
+    </p>
+  );
+}
+
+type CategoryRow = { id: number; name: string; total: number };
+
+function CategoryBars({ rows, total, previous }: { rows: CategoryRow[]; total: number; previous?: CategoryRow[] }) {
+  // Las categorías que tuvieron gastos antes y ahora no también aparecen: bajaron a cero.
+  const withoutSpending = (previous ?? [])
+    .filter((p) => !rows.some((r) => r.id === p.id))
+    .map((p) => ({ ...p, total: 0 }));
+  const all = [...rows, ...withoutSpending];
+  if (all.length === 0) return <Empty>Sin datos.</Empty>;
+  const max = Math.max(all[0].total, 1);
   return (
     <div className="space-y-3.5">
-      {rows.map((c) => (
+      {all.map((c) => (
         <div key={c.id}>
           <div className="mb-1.5 flex justify-between gap-3 text-sm">
             <span>{c.name}</span>
             <span className="num text-muted">
-              {money(c.total)} · {c.total / total < 0.01 ? "<1" : Math.round((c.total / total) * 100)}%
+              {money(c.total)}
+              {total > 0 && ` · ${c.total > 0 && c.total / total < 0.01 ? "<1" : Math.round((c.total / total) * 100)}%`}
             </span>
           </div>
           <Progress value={c.total / max} />
+          {previous && <CategoryChange current={c.total} previous={previous.find((p) => p.id === c.id)?.total ?? 0} />}
         </div>
       ))}
     </div>
@@ -135,13 +161,18 @@ export default async function StatsPage({
 
   const month = isMonth(params.mes) ? params.mes : currentMonth();
   const { from, to } = monthRange(month);
-  const previous = addMonths(month, -1);
-  const prevRange = monthRange(previous);
-  const [daily, categories, top, prevTotal] = await Promise.all([
+  const comparison = comparisonRange(month);
+  const { previous } = comparison;
+  const hasPrevious = months.includes(previous);
+  const comparedTo = comparison.partial
+    ? `los mismos días de ${monthName(previous, false)}`
+    : monthName(previous, false);
+  const [daily, categories, top, prevTotal, prevCategories] = await Promise.all([
     dailyTotals(month),
     byCategory(from, to),
     topExpenses(from, to),
-    totalForRange(expenses, prevRange.from, prevRange.to),
+    totalForRange(expenses, comparison.from, comparison.to),
+    hasPrevious ? byCategory(comparison.from, comparison.to) : undefined,
   ]);
   const total = daily.reduce((sum, d) => sum + d.total, 0);
 
@@ -179,7 +210,7 @@ export default async function StatsPage({
             hint={
               change == null
                 ? "Sin datos del mes anterior"
-                : `${change > 0 ? "+" : "−"}${Math.abs(Math.round(change * 100))}% vs. ${monthName(previous, false)}`
+                : `${change > 0 ? "+" : "−"}${Math.abs(Math.round(change * 100))}% vs. ${comparedTo}`
             }
           />
         </div>
@@ -194,9 +225,9 @@ export default async function StatsPage({
       <div className="card">
         <BarChart bars={bars} summary="Tocá una barra para ver el monto" />
       </div>
-      <SectionTitle>Por categoría</SectionTitle>
+      <SectionTitle>Por categoría{hasPrevious && ` · vs. ${comparedTo}`}</SectionTitle>
       <div className="card">
-        <CategoryBars rows={categories} total={total} />
+        <CategoryBars rows={categories} total={total} previous={prevCategories} />
       </div>
       <SectionTitle>Gastos más grandes</SectionTitle>
       <div className="card py-1">
