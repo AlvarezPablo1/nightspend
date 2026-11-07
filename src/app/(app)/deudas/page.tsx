@@ -28,11 +28,13 @@ function DebtFields({ debt }: { debt?: Debt }) {
   );
 }
 
-function totalsLabel(list: Debt[]) {
-  const ars = list.filter((d) => d.currency === "ARS").reduce((sum, d) => sum + d.remaining, 0);
-  const usd = list.filter((d) => d.currency === "USD").reduce((sum, d) => sum + d.remaining, 0);
-  const parts = [ars > 0 && money(ars), usd > 0 && money(usd, "USD")].filter(Boolean);
-  return parts.length ? parts.join(" + ") : money(0);
+const CURRENCY_GROUPS = [
+  { currency: "ARS", label: "Pesos" },
+  { currency: "USD", label: "Dólares" },
+] as const;
+
+function totalRemaining(list: Debt[]) {
+  return list.reduce((sum, d) => sum + d.remaining, 0);
 }
 
 function DebtCard({ debt }: { debt: Debt }) {
@@ -111,6 +113,47 @@ function DebtCard({ debt }: { debt: Debt }) {
   );
 }
 
+function DebtSection({ title, empty, debts }: { title: string; empty: string; debts: Debt[] }) {
+  const groups = CURRENCY_GROUPS.map((group) => ({
+    ...group,
+    debts: debts.filter((d) => d.currency === group.currency),
+  })).filter((group) => group.debts.length > 0);
+  const [only] = groups;
+  const mixed = groups.length > 1;
+
+  return (
+    <>
+      <SectionTitle
+        action={
+          mixed ? undefined : (
+            <span className="num text-sm">{only ? money(totalRemaining(only.debts), only.currency) : money(0)}</span>
+          )
+        }
+      >
+        {title}
+      </SectionTitle>
+      <div className="card py-1">
+        {debts.length === 0 && <Empty>{empty}</Empty>}
+        {mixed
+          ? groups.map((group) => (
+              <section key={group.currency} className="not-first:border-t not-first:border-line">
+                <div className="flex items-center justify-between gap-3 pt-3 text-xs text-muted">
+                  <h3>{group.label}</h3>
+                  <span className="num">{money(totalRemaining(group.debts), group.currency)}</span>
+                </div>
+                <div>
+                  {group.debts.map((d) => (
+                    <DebtCard key={d.id} debt={d} />
+                  ))}
+                </div>
+              </section>
+            ))
+          : debts.map((d) => <DebtCard key={d.id} debt={d} />)}
+      </div>
+    </>
+  );
+}
+
 export default async function DebtsPage() {
   const debts = await debtStatus();
   const iOwe = debts.filter((d) => d.direction === "debo");
@@ -128,20 +171,8 @@ export default async function DebtsPage() {
           </Sheet>
         }
       />
-      <SectionTitle action={<span className="num text-sm">{totalsLabel(owedToMe)}</span>}>Me deben</SectionTitle>
-      <div className="card py-1">
-        {owedToMe.length === 0 && <Empty>Nadie te debe nada.</Empty>}
-        {owedToMe.map((d) => (
-          <DebtCard key={d.id} debt={d} />
-        ))}
-      </div>
-      <SectionTitle action={<span className="num text-sm">{totalsLabel(iOwe)}</span>}>Debo</SectionTitle>
-      <div className="card py-1">
-        {iOwe.length === 0 && <Empty>No tenés deudas cargadas.</Empty>}
-        {iOwe.map((d) => (
-          <DebtCard key={d.id} debt={d} />
-        ))}
-      </div>
+      <DebtSection title="Me deben" empty="Nadie te debe nada." debts={owedToMe} />
+      <DebtSection title="Debo" empty="No tenés deudas cargadas." debts={iOwe} />
     </>
   );
 }
