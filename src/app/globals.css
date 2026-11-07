@@ -37,6 +37,8 @@
 }
 
 html {
+  /* En iOS instalada, una página corta no cuenta la barra de estado y lo fijo abajo queda corrido */
+  min-height: calc(100% + env(safe-area-inset-top));
   /* Al bloquear el desplazamiento, la página no salta de costado */
   scrollbar-gutter: stable;
   /* Sin zoom con dos dedos ni doble toque; el desplazamiento sigue funcionando */
