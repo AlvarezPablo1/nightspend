@@ -1,10 +1,9 @@
 import { eq } from "drizzle-orm";
-import { ChevronLeft, Trash2 } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { deleteExpense } from "@/app/actions";
 import { ExpenseForm } from "@/components/expense-form";
-import { ActionButton } from "@/components/forms";
+import { DeleteExpenseButton } from "@/components/delete-expense-button";
 import { db } from "@/db";
 import * as s from "@/db/schema";
 import { moneyInput, today } from "@/lib/format";
@@ -51,14 +50,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
           }}
         />
       </div>
-      <ActionButton
-        action={deleteExpense}
-        fields={{ id: expense.id }}
-        confirm="Tocá de nuevo para borrar"
-        className="btn mt-3 w-full text-bad"
-      >
-        <Trash2 size={16} /> Borrar gasto
-      </ActionButton>
+      <DeleteExpenseButton id={expense.id} />
     </>
   );
 }

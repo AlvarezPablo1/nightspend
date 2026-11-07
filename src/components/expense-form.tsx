@@ -1,9 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { saveExpense, type ActionResult } from "@/app/actions";
 import { addMonths } from "@/lib/format";
 import { ActionForm, AmountField, Field, OwnerFields } from "./forms";
+import { LOADING_EVENT, previousPath } from "./navigation-loader";
 
 export type ExpenseOptions = {
   categories: { id: number; name: string }[];
@@ -39,9 +41,18 @@ type ExpenseFormProps = {
 
 /** Al guardar un gasto nuevo, el formulario vuelve a empezar de cero para el próximo. */
 export function ExpenseForm(props: ExpenseFormProps) {
+  const router = useRouter();
   const [version, setVersion] = useState(0);
   const isNew = !props.initial?.id && !props.hiddenId;
-  return <ExpenseFields key={version} {...props} onSaved={isNew ? () => setVersion(version + 1) : undefined} />;
+  // Al terminar de editar, vuelve a la pantalla desde la que se abrió el gasto.
+  const goBack = () => {
+    window.dispatchEvent(new CustomEvent(LOADING_EVENT, { detail: true }));
+    const previous = previousPath();
+    if (window.history.length > 1 && previous) router.back();
+    else router.push(`/gastos?mes=${props.initial?.date?.slice(0, 7) ?? ""}`);
+  };
+  const onSaved = isNew ? () => setVersion(version + 1) : props.initial?.id ? goBack : undefined;
+  return <ExpenseFields key={version} {...props} onSaved={onSaved} />;
 }
 
 function ExpenseFields({
@@ -80,7 +91,12 @@ function ExpenseFields({
   }
 
   return (
-    <ActionForm action={action} onSuccess={onSaved} submitLabel={submitLabel}>
+    <ActionForm
+      action={action}
+      onSuccess={onSaved}
+      submitLabel={submitLabel}
+      pendingLabel={hiddenId ? "Registrando compra…" : undefined}
+    >
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
       {hiddenId && <input type="hidden" name="id" value={hiddenId} />}
       <input type="hidden" name="categoryId" value={categoryId ?? ""} />

@@ -215,7 +215,12 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
               <ActionForm action={saveRecurringIncome}>
                 <JobFields job={job} origins={origins} />
               </ActionForm>
-              <ActionButton action={toggleRecurringIncome} fields={{ id: job.id }} className="btn mt-2 w-full">
+              <ActionButton
+                action={toggleRecurringIncome}
+                fields={{ id: job.id }}
+                pendingLabel={job.active ? "Pausando…" : "Reactivando…"}
+                className="btn mt-2 w-full"
+              >
                 {job.active ? (
                   <>
                     <Pause size={16} /> Pausar

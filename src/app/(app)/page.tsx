@@ -1,22 +1,23 @@
+import { BellRing } from "lucide-react";
 import Link from "next/link";
 import { Empty, PageTitle, SectionTitle, Stat } from "@/components/ui";
-import { currentMonth, money, monthName, monthRange, shortDate } from "@/lib/format";
+import { currentMonth, dueText, money, monthName, monthRange, shortDate } from "@/lib/format";
 import {
+  dueAlerts,
   expenseList,
   installmentStatus,
+  monthAvailability,
   recurringStatus,
-  totalForRange,
 } from "@/lib/queries";
-import { expenses, incomes } from "@/db/schema";
 import { ensureRecurringIncomes } from "@/lib/recurring-incomes";
 
 export default async function HomePage() {
   const month = currentMonth();
   const { from, to } = monthRange(month);
   await ensureRecurringIncomes();
-  const [spent, earned, recents, recurrings, installments] = await Promise.all([
-    totalForRange(expenses, from, to),
-    totalForRange(incomes, from, to),
+  const [{ available, spent, earned, fixed, installments: dueInstallments, incomplete }, alerts, recents, recurrings, installments] = await Promise.all([
+    monthAvailability(),
+    dueAlerts(),
     expenseList({ from, to, limit: 5 }),
     recurringStatus(month),
     installmentStatus(1),
@@ -28,6 +29,35 @@ export default async function HomePage() {
   return (
     <>
       <PageTitle title={monthName(month).replace(/^./, (c) => c.toUpperCase())} />
+
+      <section className="card mb-3">
+        <p className="text-[13px] text-muted">{available < 0 ? "Te pasaste este mes" : "Te queda disponible"}</p>
+        <p className={`num mt-1 text-3xl font-semibold tracking-tight ${available < 0 ? "text-bad" : ""}`}>
+          {money(Math.abs(available))}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Ya descuenta <span className="num">{money(fixed)}</span> de fijos pendientes y{" "}
+          <span className="num">{money(dueInstallments)}</span> de cuotas.
+          {incomplete && " Sin contar lo que está en dólares: no pude obtener la cotización."}
+        </p>
+      </section>
+
+      {alerts.length > 0 && (
+        <section className="card mb-3 py-1" aria-label="Pagos por vencer">
+          {alerts.map((a) => (
+            <Link key={`${a.id}-${a.period}`} href={a.frequency === "anual" ? "/fijos?tipo=anual" : "/fijos"} className="row">
+              <div className="flex min-w-0 items-center gap-3">
+                <BellRing size={18} className={`shrink-0 ${a.days < 0 ? "text-bad" : "text-warn"}`} />
+                <div className="min-w-0">
+                  <p className="truncate">{a.name}</p>
+                  <p className={`text-xs ${a.days < 0 ? "text-bad" : "text-warn"}`}>{dueText(a.days)}</p>
+                </div>
+              </div>
+              <span className="num shrink-0">{money(a.amount, a.currency)}</span>
+            </Link>
+          ))}
+        </section>
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <div className="col-span-2 md:col-span-1">

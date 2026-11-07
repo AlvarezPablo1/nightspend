@@ -6,6 +6,17 @@ import { useEffect, useState } from "react";
 // Si el destino termina siendo la misma pantalla, el indicador no queda colgado.
 const MAX_VISIBLE_MS = 15_000;
 export const LOADING_EVENT = "nightspend:loading";
+const CURRENT_KEY = "nightspend:current";
+const PREVIOUS_KEY = "nightspend:previous";
+
+/** Pantalla anterior, para volver a ella después de editar o borrar. */
+export function previousPath() {
+  try {
+    return sessionStorage.getItem(PREVIOUS_KEY);
+  } catch {
+    return null;
+  }
+}
 
 function isInternalNavigation(event: MouseEvent) {
   if (event.defaultPrevented || event.button !== 0) return false;
@@ -23,7 +34,20 @@ export function NavigationLoader() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => setLoading(false), [pathname, searchParams]);
+  useEffect(() => {
+    setLoading(false);
+    try {
+      const search = searchParams.toString();
+      const current = pathname + (search ? `?${search}` : "");
+      const stored = sessionStorage.getItem(CURRENT_KEY);
+      if (stored !== current) {
+        if (stored) sessionStorage.setItem(PREVIOUS_KEY, stored);
+        sessionStorage.setItem(CURRENT_KEY, current);
+      }
+    } catch {
+      // Sin almacenamiento se vuelve a la lista del mes.
+    }
+  }, [pathname, searchParams]);
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {

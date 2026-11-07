@@ -46,11 +46,16 @@ La base principal arranca vacía, porque el importador de datos personales no fo
 
 Cada cambio que llega a `main` se publica solo en Vercel. Las migraciones de la base se aplican aparte, con `npm run db:migrate`.
 
+## Backup mensual
+
+Vercel llama a `/api/cron/backup` los días 1, 2 y 3 de cada mes. Envía el Excel completo por mail con Resend una sola vez por mes, y si falla reintenta al día siguiente. Necesita `CRON_SECRET`, `RESEND_API_KEY` y `BACKUP_EMAIL`.
+
 ## Reglas de cálculo
 
 - Una compra suma completa el día que se hizo, aunque sea en cuotas. Las cuotas solo muestran lo comprometido a futuro.
 - El resumen de tarjeta es un fijo de tipo "recordatorio": no suma como gasto, para no contar dos veces.
 - Una compra de otra persona con tu tarjeta no suma a tus gastos: queda en Cuotas y genera una deuda en "Me deben".
+- "Te queda disponible" es ingresos menos gastos, fijos pendientes y cuotas del mes. No resta el resumen de tarjeta, y las cuotas de una compra hecha este mes tampoco, porque esa compra ya sumó completa.
 - Los trabajos fijos generan su ingreso al abrir la app, una vez alcanzado el día de cobro, y recuperan los meses que falten. Un cobro borrado a mano no se vuelve a crear.
 - La cotización del dólar viene de dolarapi.com (hoy) y argentinadatos.com (fechas pasadas): venta en gastos y compra en ingresos. El tipo de dólar se elige en Ajustes.
 - Los montos se guardan en centavos. Los movimientos en dólares guardan su cotización y su equivalente en pesos.

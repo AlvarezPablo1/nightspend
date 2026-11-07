@@ -65,6 +65,23 @@ export function addDays(date: string, delta: number) {
   return new Date(Date.UTC(y, m - 1, d + delta)).toISOString().slice(0, 10);
 }
 
+/** Días desde `from` hasta `to` (negativo si `to` ya pasó). */
+export function daysBetween(from: string, to: string) {
+  const utc = (date: string) => {
+    const [y, m, d] = date.split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((utc(to) - utc(from)) / 86_400_000);
+}
+
+export function dueText(days: number) {
+  if (days < -1) return `Venció hace ${-days} días`;
+  if (days === -1) return "Venció ayer";
+  if (days === 0) return "Vence hoy";
+  if (days === 1) return "Vence mañana";
+  return `Vence en ${days} días`;
+}
+
 export function monthRange(month: string) {
   return { from: `${month}-01`, to: `${addMonths(month, 1)}-01` };
 }

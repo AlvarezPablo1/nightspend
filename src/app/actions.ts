@@ -3,7 +3,7 @@
 import { eq, gte, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { db } from "@/db";
 import * as s from "@/db/schema";
 import type { Currency } from "@/db/schema";
@@ -36,7 +36,7 @@ function action(fn: (form: FormData) => Promise<string | void>) {
     }
     revalidatePath("/", "layout");
     // Si la acción borró lo que se estaba viendo, hay que salir de esa página.
-    if (destination) redirect(destination);
+    if (destination) redirect(destination, RedirectType.replace);
     return { ok: true };
   };
 }
@@ -281,6 +281,9 @@ export const deleteExpense = action(async (f) => {
     .delete(s.expenses)
     .where(eq(s.expenses.id, id(f)))
     .returning({ date: s.expenses.date });
+  // Vuelve a la pantalla de origen, si es una ruta interna y no la del gasto recién borrado.
+  const returnTo = str(f, "returnTo");
+  if (/^\/(?!\/)/.test(returnTo) && !/^\/gastos\/\d/.test(returnTo)) return returnTo;
   return deleted ? `/gastos?mes=${deleted.date.slice(0, 7)}` : "/gastos";
 });
 

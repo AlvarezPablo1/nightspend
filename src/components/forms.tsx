@@ -183,12 +183,13 @@ export function ActionForm({
   onSuccess,
   className = "space-y-4",
   submitClassName = "btn btn-primary w-full",
-  pendingLabel = "Guardando…",
+  pendingLabel,
   children,
 }: {
   action: ServerAction;
   submitLabel?: string;
   submitClassName?: string;
+  /** Texto mientras se ejecuta. Por defecto distingue entre agregar y guardar cambios. */
   pendingLabel?: string;
   resetOnSuccess?: boolean;
   onSuccess?: () => void;
@@ -198,11 +199,13 @@ export function ActionForm({
   const sheet = useContext(SheetContext);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [runningLabel, setRunningLabel] = useState("");
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     const data = new FormData(form);
+    setRunningLabel(pendingLabel ?? (data.get("id") ? "Guardando cambios…" : "Agregando…"));
     start(async () => {
       try {
         const result = await action(data);
@@ -233,7 +236,14 @@ export function ActionForm({
         </p>
       )}
       <button type="submit" disabled={pending} className={submitClassName}>
-        {pending ? pendingLabel : submitLabel}
+        {pending ? (
+          <>
+            <span className="spinner-sm" aria-hidden />
+            {runningLabel}
+          </>
+        ) : (
+          submitLabel
+        )}
       </button>
     </form>
   );
@@ -246,18 +256,22 @@ export function ActionButton({
   confirm,
   className = "btn",
   label,
+  pendingLabel,
   children,
 }: {
   action: ServerAction;
-  fields: Record<string, string | number>;
+  fields: Record<string, string | number> | (() => Record<string, string | number>);
   confirm?: string;
   className?: string;
   label?: string;
+  /** Texto mientras se ejecuta; `null` muestra solo el indicador, para botones chicos. */
+  pendingLabel?: string | null;
   children: ReactNode;
 }) {
   const sheet = useContext(SheetContext);
   const [pending, start] = useTransition();
   const [armed, setArmed] = useState(false);
+  const runningLabel = pendingLabel === undefined ? (confirm ? "Eliminando…" : "Actualizando…") : pendingLabel;
 
   function run() {
     if (confirm && !armed) {
@@ -266,7 +280,8 @@ export function ActionButton({
       return;
     }
     const data = new FormData();
-    for (const [k, v] of Object.entries(fields)) data.set(k, String(v));
+    const values = typeof fields === "function" ? fields() : fields;
+    for (const [k, v] of Object.entries(values)) data.set(k, String(v));
     start(async () => {
       await action(data);
       setArmed(false);
@@ -275,8 +290,17 @@ export function ActionButton({
   }
 
   return (
-    <button type="button" aria-label={armed ? undefined : label} disabled={pending} onClick={run} className={className}>
-      {armed ? confirm : children}
+    <button type="button" aria-label={armed || pending ? undefined : label} disabled={pending} onClick={run} className={className}>
+      {pending ? (
+        <>
+          <span className="spinner-sm" aria-hidden />
+          {runningLabel}
+        </>
+      ) : armed ? (
+        confirm
+      ) : (
+        children
+      )}
     </button>
   );
 }

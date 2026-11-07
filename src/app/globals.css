@@ -135,7 +135,7 @@ body {
     border-color: var(--border-strong);
   }
   .btn:disabled {
-    opacity: 0.55;
+    opacity: 0.8;
     cursor: default;
   }
   .btn-primary {
@@ -230,6 +230,17 @@ body {
   border-radius: 50%;
   border: 3px solid var(--border-strong);
   border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+
+.spinner-sm {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
   animation: spin 0.7s linear infinite;
 }
 

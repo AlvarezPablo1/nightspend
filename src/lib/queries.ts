@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import * as s from "@/db/schema";
-import { addMonths, currentMonth, monthRange } from "./format";
+import { lookupRate } from "./dollar";
+import { addMonths, currentMonth, daysBetween, daysInMonth, monthRange, today } from "./format";
 import { ensureRecurringIncomes } from "./recurring-incomes";
 
 export const activeCategories = () =>
@@ -218,6 +219,91 @@ export async function installmentStatus(monthsAhead = 12) {
 export async function debtPeople() {
   const rows = await db.selectDistinct({ person: s.debts.person }).from(s.debts).orderBy(asc(s.debts.person));
   return rows.map((r) => r.person);
+}
+
+/**
+ * Lo que queda del mes: ingresos, menos lo gastado, menos los fijos que faltan pagar,
+ * menos las cuotas del mes. El resumen de tarjeta no se resta porque es un recordatorio,
+ * y las cuotas de una compra de este mes tampoco, porque ya sumó completa como gasto.
+ */
+export async function monthAvailability() {
+  const month = currentMonth();
+  const { from, to } = monthRange(month);
+  const [spent, earned, recurrings, { plans }, purchases] = await Promise.all([
+    totalForRange(s.expenses, from, to),
+    totalForRange(s.incomes, from, to),
+    recurringStatus(month),
+    installmentStatus(1),
+    db
+      .select({ id: s.expenses.id })
+      .from(s.expenses)
+      .where(and(gte(s.expenses.date, from), lt(s.expenses.date, to))),
+  ]);
+  const purchasedNow = new Set(purchases.map((p) => p.id));
+
+  const pendingFixed = recurrings.filter((r) => r.frequency === "mensual" && !r.payment && r.createsExpense);
+  const dueInstallments = plans.filter(
+    (p) =>
+      p.firstMonth <= month &&
+      p.lastMonth >= month &&
+      p.perInstallment != null &&
+      !(p.expenseId && purchasedNow.has(p.expenseId)),
+  );
+
+  const usesDollars = [...pendingFixed, ...dueInstallments].some((item) => item.currency === "USD");
+  const rate = usesDollars ? ((await lookupRate(today(), "venta"))?.rate ?? null) : null;
+  // Sin cotización esos montos quedan afuera, y la pantalla lo aclara.
+  const toPesos = (cents: number, currency: s.Currency) =>
+    currency === "ARS" ? cents : rate ? Math.round(cents * rate) : 0;
+
+  const fixed = pendingFixed.reduce((sum, r) => sum + toPesos(r.amount, r.currency), 0);
+  const installments = dueInstallments.reduce((sum, p) => sum + toPesos(p.perInstallment!, p.currency), 0);
+  return {
+    available: earned - spent - fixed - installments,
+    spent,
+    earned,
+    fixed,
+    installments,
+    incomplete: usesDollars && rate == null,
+  };
+}
+
+const DUE_WINDOW_DAYS = 5;
+const OVERDUE_ANNUAL_DAYS = 30;
+
+/** Pagos sin marcar que vencen en los próximos días, o que ya vencieron en este período. */
+export async function dueAlerts() {
+  const [rows, payments] = await Promise.all([
+    db.select().from(s.recurrings).where(eq(s.recurrings.active, true)),
+    db.select().from(s.recurringPayments),
+  ]);
+  const now = today();
+  const month = now.slice(0, 7);
+  const year = Number(now.slice(0, 4));
+  const isPaid = (id: number, period: string) => payments.some((p) => p.recurringId === id && p.period === period);
+  const dueIn = (m: string, day: number) => `${m}-${String(Math.min(day, daysInMonth(m))).padStart(2, "0")}`;
+
+  const alerts = rows.flatMap((r) => {
+    if (!r.dueDay) return [];
+    const candidates =
+      r.frequency === "mensual"
+        ? [
+            { period: month, date: dueIn(month, r.dueDay), minDays: -31 },
+            { period: addMonths(month, 1), date: dueIn(addMonths(month, 1), r.dueDay), minDays: 0 },
+          ]
+        : r.dueMonth
+          ? [year, year + 1].map((y) => {
+              const m = `${y}-${String(r.dueMonth).padStart(2, "0")}`;
+              return { period: String(y), date: dueIn(m, r.dueDay!), minDays: -OVERDUE_ANNUAL_DAYS };
+            })
+          : [];
+    return candidates.flatMap((c) => {
+      const days = daysBetween(now, c.date);
+      if (days > DUE_WINDOW_DAYS || days < c.minDays || isPaid(r.id, c.period)) return [];
+      return [{ id: r.id, name: r.name, amount: r.amount, currency: r.currency, frequency: r.frequency, days, period: c.period }];
+    });
+  });
+  return alerts.sort((a, b) => a.days - b.days);
 }
 
 export async function debtStatus() {

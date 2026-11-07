@@ -73,7 +73,7 @@ function DebtCard({ debt }: { debt: Debt }) {
       {debt.remaining > 0 && (
         <div className="relative z-10 mt-2 inline-block">
           <Sheet title={`Registrar pago · ${debt.person}`} triggerClassName="btn min-h-9! px-3 text-sm" trigger="Registrar pago">
-            <ActionForm action={addDebtPayment} resetOnSuccess submitLabel="Registrar">
+            <ActionForm action={addDebtPayment} resetOnSuccess submitLabel="Registrar" pendingLabel="Registrando pago…">
               <input type="hidden" name="id" value={debt.id} />
               <Field label={`Monto (${debt.currency})`}>
                 <input name="amount" required inputMode="decimal" defaultValue={moneyInput(debt.remaining)} className="input num" />
@@ -98,6 +98,7 @@ function DebtCard({ debt }: { debt: Debt }) {
                   fields={{ id: p.id }}
                   confirm="¿Borrar?"
                   label="Borrar pago"
+                  pendingLabel={null}
                   className="flex h-8 min-w-8 cursor-pointer items-center justify-center"
                 >
                   <X size={14} />

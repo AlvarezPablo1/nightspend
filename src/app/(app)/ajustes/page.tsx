@@ -125,7 +125,7 @@ export default async function SettingsPage() {
 
       <SectionTitle>Cotización del dólar</SectionTitle>
       <div className="card">
-        <ActionForm action={saveDollarType} submitLabel="Guardar tipo de dólar">
+        <ActionForm action={saveDollarType} submitLabel="Guardar tipo de dólar" pendingLabel="Guardando…">
           <Field label="Tipo de dólar para convertir a pesos">
             <select name="dollarType" defaultValue={dollarType} className="input">
               {Object.entries(DOLLAR_TYPES).map(([value, label]) => {

@@ -110,6 +110,7 @@ export default async function WishItemPage({ params }: { params: Promise<{ id: s
               fields={{ id: step.id }}
               confirm="¿Borrar?"
               label={`Borrar ${step.text}`}
+              pendingLabel={null}
               className="flex h-11 min-w-8 shrink-0 cursor-pointer items-center justify-center text-xs text-muted"
             >
               <X size={15} />
@@ -118,7 +119,7 @@ export default async function WishItemPage({ params }: { params: Promise<{ id: s
         ))}
       </div>
       <div className="mt-3">
-        <ActionForm action={addWishStep} resetOnSuccess submitLabel="Agregar paso" className="space-y-2">
+        <ActionForm action={addWishStep} resetOnSuccess submitLabel="Agregar paso" pendingLabel="Agregando…" className="space-y-2">
           <input type="hidden" name="id" value={item.id} />
           <Field label="Nuevo paso">
             <input name="text" required autoComplete="off" className="input" />

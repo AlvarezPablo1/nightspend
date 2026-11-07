@@ -2,8 +2,8 @@ import { Check, Plus, Trash2, Undo2 } from "lucide-react";
 import { deleteRecurring, payRecurring, saveRecurring, undoRecurringPayment } from "@/app/actions";
 import { ActionButton, ActionForm, AmountField, EditSheet, Field, MethodSelect, Sheet } from "@/components/forms";
 import { Empty, PageTitle, Tabs } from "@/components/ui";
-import { currentMonth, money, moneyInput, monthName, monthShort, shortDate, today } from "@/lib/format";
-import { activeCategories, activeMethods, recurringStatus } from "@/lib/queries";
+import { currentMonth, dueText, money, moneyInput, monthName, monthShort, shortDate, today } from "@/lib/format";
+import { activeCategories, activeMethods, dueAlerts, recurringStatus } from "@/lib/queries";
 
 type Option = { id: number; name: string };
 type Recurring = Awaited<ReturnType<typeof recurringStatus>>[number];
@@ -89,10 +89,11 @@ function dueLabel(r: Recurring) {
 export default async function RecurringPage({ searchParams }: { searchParams: Promise<{ tipo?: string }> }) {
   const frequency = (await searchParams).tipo === "anual" ? "anual" : "mensual";
   const month = currentMonth();
-  const [all, categories, methods] = await Promise.all([
+  const [all, categories, methods, alerts] = await Promise.all([
     recurringStatus(month),
     activeCategories(),
     activeMethods(),
+    dueAlerts(),
   ]);
   const items = all
     .filter((r) => r.frequency === frequency)
@@ -132,6 +133,10 @@ export default async function RecurringPage({ searchParams }: { searchParams: Pr
               <p className="truncate text-xs text-muted">
                 {r.payment ? (
                   <span className="text-good">Pagado el {shortDate(r.payment.paidOn)}</span>
+                ) : alerts.some((x) => x.id === r.id && x.period === r.period) ? (
+                  <span className="text-warn">
+                    {dueText(alerts.find((x) => x.id === r.id && x.period === r.period)!.days)}
+                  </span>
                 ) : (
                   `Pendiente · ${dueLabel(r)}`
                 )}
@@ -158,6 +163,7 @@ export default async function RecurringPage({ searchParams }: { searchParams: Pr
                   action={undoRecurringPayment}
                   fields={{ id: r.payment.id }}
                   confirm="¿Deshacer?"
+                  pendingLabel="Deshaciendo…"
                   label={`Deshacer pago de ${r.name}`}
                   className="btn px-3 text-sm"
                 >
@@ -173,7 +179,7 @@ export default async function RecurringPage({ searchParams }: { searchParams: Pr
                     </>
                   }
                 >
-                  <ActionForm action={payRecurring} submitLabel="Marcar como pagado">
+                  <ActionForm action={payRecurring} submitLabel="Marcar como pagado" pendingLabel="Registrando pago…">
                     <input type="hidden" name="id" value={r.id} />
                     <input type="hidden" name="period" value={r.period} />
                     <AmountField
