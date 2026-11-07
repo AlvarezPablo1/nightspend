@@ -37,7 +37,12 @@ export default async function WishlistPage() {
             </p>
           </div>
           <span className="flex shrink-0 items-center gap-1">
-            {item.estimatedPrice != null && <span className="num">{money(item.estimatedPrice, item.currency)}</span>}
+            <span className="text-right">
+              {item.estimatedPrice != null && <span className="num block">{money(item.estimatedPrice, item.currency)}</span>}
+              {!item.purchasedOn && (item.estimatedPrice != null || item.saved > 0) && (
+                <span className="num block text-xs text-accent-hover">{money(item.saved, item.currency)} ahorrado</span>
+              )}
+            </span>
             <ChevronRight size={16} className="text-muted" />
           </span>
         </div>
