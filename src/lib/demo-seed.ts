@@ -4,12 +4,10 @@ import { guestPool } from "@/db/guest-pools";
 import * as s from "@/db/schema";
 import { addMonths, currentMonth, daysInMonth, today } from "./format";
 import { GUEST_USER_ID } from "./session";
+import { STARTER_CATEGORIES } from "./starter-data";
 
 /** Datos 100 % ficticios para los invitados. Las fechas se calculan a partir de hoy. */
-const CATEGORIES = [
-  "Mercadería", "Cuentas", "Transporte", "Salidas", "Personal",
-  "Mascotas", "Salud", "Hogar", "Transferencias", "Otros",
-];
+const CATEGORIES = STARTER_CATEGORIES;
 
 const METHODS = [
   { name: "Efectivo", type: "efectivo" as const },

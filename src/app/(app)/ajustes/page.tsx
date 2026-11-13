@@ -1,10 +1,11 @@
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { Download, Plus } from "lucide-react";
 import { saveCategory, saveDollarType, saveMethod, toggleCategoryArchived, toggleMethodArchived } from "@/app/actions";
 import { ActionButton, ActionForm, EditSheet, Field, Sheet } from "@/components/forms";
 import { PageTitle, SectionTitle } from "@/components/ui";
 import { db } from "@/db";
 import { categories, paymentMethods } from "@/db/schema";
+import { currentUserId } from "@/lib/auth";
 import { DOLLAR_TYPES, getDollarType, todayRates } from "@/lib/dollar";
 import { currentMonth, money, monthName } from "@/lib/format";
 import { availableMonths } from "@/lib/queries";
@@ -43,12 +44,21 @@ function MethodFields({ method }: { method?: typeof paymentMethods.$inferSelect 
 }
 
 export default async function SettingsPage() {
+  const userId = await currentUserId();
   const [cats, methods, dollarType, rates, months] = await Promise.all([
-    db.select().from(categories).orderBy(asc(categories.archived), asc(categories.sortOrder), asc(categories.name)),
-    db.select().from(paymentMethods).orderBy(asc(paymentMethods.archived), asc(paymentMethods.id)),
-    getDollarType(),
+    db
+      .select()
+      .from(categories)
+      .where(eq(categories.userId, userId))
+      .orderBy(asc(categories.archived), asc(categories.sortOrder), asc(categories.name)),
+    db
+      .select()
+      .from(paymentMethods)
+      .where(eq(paymentMethods.userId, userId))
+      .orderBy(asc(paymentMethods.archived), asc(paymentMethods.id)),
+    getDollarType(userId),
     todayRates(),
-    availableMonths(),
+    availableMonths(userId),
   ]);
 
   const edit = (title: string, children: React.ReactNode) => <EditSheet title={title}>{children}</EditSheet>;

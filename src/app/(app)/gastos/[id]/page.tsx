@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,19 +6,27 @@ import { ExpenseForm } from "@/components/expense-form";
 import { DeleteExpenseButton } from "@/components/delete-expense-button";
 import { db } from "@/db";
 import * as s from "@/db/schema";
+import { currentUserId } from "@/lib/auth";
 import { moneyInput, today } from "@/lib/format";
 import { activeCategories, activeMethods, expenseSuggestions } from "@/lib/queries";
 
 export default async function ExpensePage({ params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
+  const userId = await currentUserId();
   const [[expense], [plan], categories, activeMethodList, allMethods, suggestions] = await Promise.all([
-    db.select().from(s.expenses).where(eq(s.expenses.id, id)),
-    db.select().from(s.installmentPlans).where(eq(s.installmentPlans.expenseId, id)),
-    activeCategories(),
-    activeMethods(),
-    db.select().from(s.paymentMethods),
-    expenseSuggestions(),
+    db
+      .select()
+      .from(s.expenses)
+      .where(and(eq(s.expenses.id, id), eq(s.expenses.userId, userId))),
+    db
+      .select()
+      .from(s.installmentPlans)
+      .where(and(eq(s.installmentPlans.expenseId, id), eq(s.installmentPlans.userId, userId))),
+    activeCategories(userId),
+    activeMethods(userId),
+    db.select().from(s.paymentMethods).where(eq(s.paymentMethods.userId, userId)),
+    expenseSuggestions(userId),
   ]);
   if (!expense) notFound();
   const methods = allMethods.filter(

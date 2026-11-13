@@ -4,6 +4,7 @@ import { deletePlan, savePlan } from "@/app/actions";
 import { BarChart } from "@/components/bar-chart";
 import { ActionButton, ActionForm, EditSheet, Field, MethodSelect, OwnerFields, Sheet } from "@/components/forms";
 import { Empty, PageTitle, Progress, SectionTitle, Stat } from "@/components/ui";
+import { currentUserId } from "@/lib/auth";
 import { addMonths, currentMonth, money, moneyInput, monthName, monthShort } from "@/lib/format";
 import { activeMethods, debtPeople, installmentStatus, type Plan } from "@/lib/queries";
 
@@ -68,7 +69,12 @@ function PlanDelete({ plan }: { plan: Plan }) {
 }
 
 export default async function InstallmentsPage() {
-  const [{ plans, schedule }, methods, people] = await Promise.all([installmentStatus(12), activeMethods(), debtPeople()]);
+  const userId = await currentUserId();
+  const [{ plans, schedule }, methods, people] = await Promise.all([
+    installmentStatus(userId, 12),
+    activeMethods(userId),
+    debtPeople(userId),
+  ]);
   const active = plans.filter((p) => p.pending > 0);
   const finished = plans.filter((p) => p.pending === 0);
   const totalPending = active.reduce((sum, p) => (p.currency === "ARS" ? sum + (p.remaining ?? 0) : sum), 0);

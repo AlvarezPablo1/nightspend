@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Pause, Play, Plus, Trash2 } from "lucide-react";
 import { redirect } from "next/navigation";
 import {
@@ -12,6 +12,7 @@ import { ActionButton, ActionForm, AmountField, EditSheet, Field, Sheet } from "
 import { Empty, MonthNav, PageTitle, SectionTitle, Stat } from "@/components/ui";
 import { db } from "@/db";
 import { expenses, incomes, recurringIncomes } from "@/db/schema";
+import { currentUserId } from "@/lib/auth";
 import { currentMonth, isMonth, money, moneyInput, monthRange, shortDate, today } from "@/lib/format";
 import { availableMonths, incomesFor, totalForRange } from "@/lib/queries";
 import { ensureRecurringIncomes, payDate } from "@/lib/recurring-incomes";
@@ -118,16 +119,25 @@ function JobFields({ job, origins }: { job?: Job; origins: string[] }) {
 }
 
 export default async function IncomePage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
-  const [{ mes: param }, months] = await Promise.all([searchParams, availableMonths()]);
+  const userId = await currentUserId();
+  const [{ mes: param }, months] = await Promise.all([searchParams, availableMonths(userId)]);
   if (param && !months.includes(param)) redirect("/ingresos");
   const month = isMonth(param) ? param : currentMonth();
   const { from, to } = monthRange(month);
   const [{ failed }, list, spent, jobs, usedOrigins] = await Promise.all([
-    ensureRecurringIncomes(),
-    incomesFor(month),
-    totalForRange(expenses, from, to),
-    db.select().from(recurringIncomes).orderBy(sql`${recurringIncomes.active} desc, ${recurringIncomes.name}`),
-    db.selectDistinct({ origin: incomes.description }).from(incomes).orderBy(sql`1`),
+    ensureRecurringIncomes(userId),
+    incomesFor(userId, month),
+    totalForRange(userId, expenses, from, to),
+    db
+      .select()
+      .from(recurringIncomes)
+      .where(eq(recurringIncomes.userId, userId))
+      .orderBy(sql`${recurringIncomes.active} desc, ${recurringIncomes.name}`),
+    db
+      .selectDistinct({ origin: incomes.description })
+      .from(incomes)
+      .where(eq(incomes.userId, userId))
+      .orderBy(sql`1`),
   ]);
   const origins = usedOrigins.map((o) => o.origin);
   const total = list.reduce((sum, i) => sum + i.amountArs, 0);

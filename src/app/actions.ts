@@ -8,7 +8,8 @@ import { redirect, RedirectType } from "next/navigation";
 import { db } from "@/db";
 import * as s from "@/db/schema";
 import type { Currency } from "@/db/schema";
-import { currentSession, requireSession } from "@/lib/auth";
+import { currentSession, currentUserId } from "@/lib/auth";
+import { createStarterData } from "@/lib/starter-data";
 import { createGuest, destroyGuest, GuestLimitError, guestModeEnabled } from "@/lib/guest";
 import { isDollarType, lookupRate, type RateSide } from "@/lib/dollar";
 import { addMonths, currentMonth, isDate, isMonth, parseMoney, today } from "@/lib/format";
@@ -28,13 +29,16 @@ export type ActionResult = { error?: string; ok?: boolean } | void;
 
 class FormError extends Error {}
 
-/** Envuelve una acción: exige sesión, traduce errores, refresca la UI y redirige si la acción devuelve una ruta. */
-function action(fn: (form: FormData) => Promise<string | void>) {
+/**
+ * Envuelve una acción: exige sesión, le pasa el usuario dueño de los datos, traduce
+ * errores, refresca la UI y redirige si la acción devuelve una ruta.
+ */
+function action(fn: (form: FormData, userId: number) => Promise<string | void>) {
   return async (form: FormData): Promise<ActionResult> => {
-    await requireSession();
+    const userId = await currentUserId();
     let destination: string | void;
     try {
-      destination = await fn(form);
+      destination = await fn(form, userId);
     } catch (e) {
       if (e instanceof FormError) return { error: e.message };
       throw e;
@@ -72,13 +76,43 @@ function amount(f: FormData, k = "amount") {
   return cents;
 }
 
-async function requiredMethod(f: FormData) {
+type OwnedTable =
+  | typeof s.categories
+  | typeof s.paymentMethods
+  | typeof s.expenses
+  | typeof s.installmentPlans
+  | typeof s.recurringIncomes
+  | typeof s.incomes
+  | typeof s.recurrings
+  | typeof s.recurringPayments
+  | typeof s.debts
+  | typeof s.debtPayments
+  | typeof s.wishProjects
+  | typeof s.wishItems
+  | typeof s.wishSteps;
+
+/** Condición para tocar una fila por id: además tiene que ser del usuario. */
+const mine = (table: OwnedTable, rowId: number, userId: number) =>
+  and(eq(table.id, rowId), eq(table.userId, userId));
+
+/**
+ * Un id que llega del formulario y apunta a otra tabla (categoría, deuda, proyecto…)
+ * tiene que ser del mismo usuario: si no, se rechaza como si no existiera.
+ */
+async function ownedRef(table: OwnedTable, rowId: number, userId: number, message: string) {
+  const [row] = await db.select({ id: table.id }).from(table as typeof s.categories).where(mine(table, rowId, userId));
+  if (!row) throw new FormError(message);
+  return rowId;
+}
+
+async function requiredMethod(f: FormData, userId: number) {
   const methodId = optionalId(f, "paymentMethodId");
   if (!methodId) throw new FormError("Elegí el medio de pago");
-  const [method] = await db.select({ id: s.paymentMethods.id }).from(s.paymentMethods).where(eq(s.paymentMethods.id, methodId));
-  if (!method) throw new FormError("Elegí el medio de pago");
-  return methodId;
+  return ownedRef(s.paymentMethods, methodId, userId, "Elegí el medio de pago");
 }
+
+const requiredCategory = (f: FormData, userId: number) =>
+  ownedRef(s.categories, id(f, "categoryId"), userId, "Elegí la categoría");
 
 const optionalAmount = (f: FormData, k: string) => (str(f, k) ? amount(f, k) : null);
 
@@ -100,6 +134,7 @@ type SavedRate = { date: string; currency: Currency; rate: string | null };
  */
 async function convert(
   f: FormData,
+  userId: number,
   cents: number,
   cur: Currency,
   date: string,
@@ -116,7 +151,7 @@ async function convert(
   } else if (saved?.rate && saved.currency === "USD" && saved.date === date) {
     rate = Number(saved.rate);
   } else {
-    rate = (await lookupRate(date, side))?.rate ?? null;
+    rate = (await lookupRate(userId, date, side))?.rate ?? null;
     if (!rate) throw new FormError("No pude obtener la cotización. Tocá \"Usar otra cotización\" y cargala a mano.");
   }
   return { rate: String(rate), amountArs: Math.round(cents * rate) };
@@ -171,11 +206,16 @@ export async function register(form: FormData): Promise<ActionResult> {
   if (await isLimited("register-ip", ip)) return { error: TOO_MANY };
   if (await isUnclaimedOwnerEmail(email)) return { error: "Ya hay una cuenta con ese email. Entrá con tu contraseña." };
 
-  const [user] = await db
-    .insert(s.users)
-    .values({ email, passwordHash: await hashPassword(password(form)) })
-    .onConflictDoNothing({ target: s.users.email })
-    .returning({ id: s.users.id });
+  const passwordHash = await hashPassword(password(form));
+  const user = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(s.users)
+      .values({ email, passwordHash })
+      .onConflictDoNothing({ target: s.users.email })
+      .returning({ id: s.users.id });
+    if (created) await createStarterData(tx, created.id);
+    return created;
+  });
   if (!user) return { error: "Ya hay una cuenta con ese email. Entrá o recuperá tu contraseña." };
   await recordAttempt("register-ip", ip);
   await setSessionCookie(await signUserSession(user.id), SESSION_DAYS * 86_400);
@@ -294,19 +334,19 @@ export async function logout() {
 
 // ---------- Gastos ----------
 
-async function expenseValues(f: FormData, saved?: SavedRate) {
+async function expenseValues(f: FormData, userId: number, saved?: SavedRate) {
   const cents = amount(f);
   const cur = currency(f);
   const date = dateField(f);
   return {
     date,
     description: required(f, "description", "la descripción"),
-    categoryId: id(f, "categoryId"),
-    paymentMethodId: await requiredMethod(f),
+    categoryId: await requiredCategory(f, userId),
+    paymentMethodId: await requiredMethod(f, userId),
     amount: cents,
     currency: cur,
     note: optional(f, "note"),
-    ...(await convert(f, cents, cur, date, "venta", saved)),
+    ...(await convert(f, userId, cents, cur, date, "venta", saved)),
   };
 }
 
@@ -338,14 +378,14 @@ function otherOwner(f: FormData) {
   };
 }
 
-function createDebtFor(tx: DbOrTx, person: string, concept: string, owed: number, cur: Currency) {
+function createDebtFor(tx: DbOrTx, userId: number, person: string, concept: string, owed: number, cur: Currency) {
   return tx
     .insert(s.debts)
-    .values({ direction: "me_deben", person, concept, amount: owed, currency: cur })
+    .values({ userId, direction: "me_deben", person, concept, amount: owed, currency: cur })
     .returning({ id: s.debts.id });
 }
 
-export const saveExpense = action(async (f) => {
+export const saveExpense = action(async (f, userId) => {
   const existing = str(f, "id") ? id(f) : null;
 
   // Compra para otra persona: no es un gasto propio, solo cuotas por pagar y una deuda a favor.
@@ -355,12 +395,13 @@ export const saveExpense = action(async (f) => {
     const cur = currency(f);
     const date = dateField(f);
     const description = required(f, "description", "la descripción");
-    const paymentMethodId = await requiredMethod(f);
+    const paymentMethodId = await requiredMethod(f, userId);
     const n = installmentCount(f);
     const first = str(f, "firstMonth");
     await db.transaction(async (tx) => {
-      const [debt] = await createDebtFor(tx, owner.person, description, owner.owed ?? total, cur);
+      const [debt] = await createDebtFor(tx, userId, owner.person, description, owner.owed ?? total, cur);
       await tx.insert(s.installmentPlans).values({
+        userId,
         description,
         paymentMethodId,
         totalAmount: total,
@@ -375,36 +416,44 @@ export const saveExpense = action(async (f) => {
     return;
   }
 
-  const [saved] = existing
-    ? await db.select().from(s.expenses).where(eq(s.expenses.id, existing))
-    : [];
-  const values = await expenseValues(f, saved);
+  const [saved] = existing ? await db.select().from(s.expenses).where(mine(s.expenses, existing, userId)) : [];
+  if (existing && !saved) throw new FormError("No se encontró el gasto");
+  const values = await expenseValues(f, userId, saved);
   const n = installmentCount(f);
   await db.transaction(async (tx) => {
     if (existing) {
-      await tx.update(s.expenses).set({ ...values, installments: n }).where(eq(s.expenses.id, existing));
+      await tx
+        .update(s.expenses)
+        .set({ ...values, installments: n })
+        .where(mine(s.expenses, existing, userId));
       if (n > 1) {
+        // El gasto ya se comprobó que es del usuario, así que su plan también.
         const plan = planValues(f, values, n);
         await tx
           .insert(s.installmentPlans)
-          .values({ ...plan, expenseId: existing })
+          .values({ ...plan, userId, expenseId: existing })
           .onConflictDoUpdate({ target: s.installmentPlans.expenseId, set: plan });
       } else {
-        await tx.delete(s.installmentPlans).where(eq(s.installmentPlans.expenseId, existing));
+        await tx
+          .delete(s.installmentPlans)
+          .where(and(eq(s.installmentPlans.expenseId, existing), eq(s.installmentPlans.userId, userId)));
       }
     } else {
-      const [created] = await tx.insert(s.expenses).values({ ...values, installments: n }).returning();
+      const [created] = await tx
+        .insert(s.expenses)
+        .values({ ...values, userId, installments: n })
+        .returning();
       if (n > 1) {
-        await tx.insert(s.installmentPlans).values({ ...planValues(f, values, n), expenseId: created.id });
+        await tx.insert(s.installmentPlans).values({ ...planValues(f, values, n), userId, expenseId: created.id });
       }
     }
   });
 });
 
-export const deleteExpense = action(async (f) => {
+export const deleteExpense = action(async (f, userId) => {
   const [deleted] = await db
     .delete(s.expenses)
-    .where(eq(s.expenses.id, id(f)))
+    .where(mine(s.expenses, id(f), userId))
     .returning({ date: s.expenses.date });
   // Vuelve a la pantalla de origen, si es una ruta interna y no la del gasto recién borrado.
   const returnTo = str(f, "returnTo");
@@ -414,13 +463,13 @@ export const deleteExpense = action(async (f) => {
 
 // ---------- Cuotas de compras anteriores a la app ----------
 
-export const savePlan = action(async (f) => {
+export const savePlan = action(async (f, userId) => {
   const firstMonth = str(f, "firstMonth");
   if (!isMonth(firstMonth)) throw new FormError("Elegí el mes de la primera cuota");
   const owner = otherOwner(f);
   const values = {
     description: required(f, "description", "la descripción"),
-    paymentMethodId: await requiredMethod(f),
+    paymentMethodId: await requiredMethod(f, userId),
     totalAmount: optionalAmount(f, "totalAmount"),
     installments: installmentCount(f),
     firstMonth,
@@ -432,8 +481,9 @@ export const savePlan = action(async (f) => {
 
   const planId = str(f, "id") ? id(f) : null;
   const [saved] = planId
-    ? await db.select().from(s.installmentPlans).where(eq(s.installmentPlans.id, planId))
+    ? await db.select().from(s.installmentPlans).where(mine(s.installmentPlans, planId, userId))
     : [];
+  if (planId && !saved) throw new FormError("No se encontró la compra en cuotas");
 
   await db.transaction(async (tx) => {
     let debtId = saved?.debtId ?? null;
@@ -442,43 +492,60 @@ export const savePlan = action(async (f) => {
         await tx
           .update(s.debts)
           .set({ person: owner.person, concept: values.description, amount: owed! })
-          .where(eq(s.debts.id, debtId));
+          .where(mine(s.debts, debtId, userId));
       } else if (!saved?.otherPerson) {
         // Pasó a ser de otra persona. Si ya era y borraste la deuda a mano, no se vuelve a crear.
-        const [debt] = await createDebtFor(tx, owner.person, values.description, owed!, saved?.currency ?? "ARS");
+        const [debt] = await createDebtFor(
+          tx,
+          userId,
+          owner.person,
+          values.description,
+          owed!,
+          saved?.currency ?? "ARS",
+        );
         debtId = debt.id;
       }
     } else if (debtId) {
       // Pasó a ser propia: la deuda se va, salvo que ya tenga pagos registrados.
-      const payments = await tx.select({ id: s.debtPayments.id }).from(s.debtPayments).where(eq(s.debtPayments.debtId, debtId));
-      if (payments.length === 0) await tx.delete(s.debts).where(eq(s.debts.id, debtId));
+      const payments = await tx
+        .select({ id: s.debtPayments.id })
+        .from(s.debtPayments)
+        .where(and(eq(s.debtPayments.debtId, debtId), eq(s.debtPayments.userId, userId)));
+      if (payments.length === 0) await tx.delete(s.debts).where(mine(s.debts, debtId, userId));
       debtId = null;
     }
 
     if (planId) {
-      await tx.update(s.installmentPlans).set({ ...values, debtId }).where(eq(s.installmentPlans.id, planId));
+      await tx
+        .update(s.installmentPlans)
+        .set({ ...values, debtId })
+        .where(mine(s.installmentPlans, planId, userId));
     } else {
-      await tx.insert(s.installmentPlans).values({ ...values, debtId });
+      await tx.insert(s.installmentPlans).values({ ...values, userId, debtId });
     }
   });
 });
 
-export const deletePlan = action(async (f) => {
-  const [plan] = await db.select().from(s.installmentPlans).where(eq(s.installmentPlans.id, id(f)));
+export const deletePlan = action(async (f, userId) => {
+  const [plan] = await db.select().from(s.installmentPlans).where(mine(s.installmentPlans, id(f), userId));
   if (!plan) return;
   await db.transaction(async (tx) => {
-    await tx.delete(s.installmentPlans).where(eq(s.installmentPlans.id, plan.id));
-    if (str(f, "alsoDebt") === "1" && plan.debtId) await tx.delete(s.debts).where(eq(s.debts.id, plan.debtId));
+    await tx.delete(s.installmentPlans).where(mine(s.installmentPlans, plan.id, userId));
+    if (str(f, "alsoDebt") === "1" && plan.debtId) {
+      await tx.delete(s.debts).where(mine(s.debts, plan.debtId, userId));
+    }
   });
 });
 
 // ---------- Ingresos ----------
 
-export const saveIncome = action(async (f) => {
+export const saveIncome = action(async (f, userId) => {
   const cents = amount(f);
   const cur = currency(f);
   const date = dateField(f);
-  const [saved] = str(f, "id") ? await db.select().from(s.incomes).where(eq(s.incomes.id, id(f))) : [];
+  const incomeId = str(f, "id") ? id(f) : null;
+  const [saved] = incomeId ? await db.select().from(s.incomes).where(mine(s.incomes, incomeId, userId)) : [];
+  if (incomeId && !saved) throw new FormError("No se encontró el ingreso");
   const values = {
     date,
     description: required(f, "description", "de dónde viene el ingreso"),
@@ -487,14 +554,14 @@ export const saveIncome = action(async (f) => {
     amount: cents,
     currency: cur,
     note: optional(f, "note"),
-    ...(await convert(f, cents, cur, date, "compra", saved)),
+    ...(await convert(f, userId, cents, cur, date, "compra", saved)),
   };
-  if (str(f, "id")) await db.update(s.incomes).set(values).where(eq(s.incomes.id, id(f)));
-  else await db.insert(s.incomes).values(values);
+  if (incomeId) await db.update(s.incomes).set(values).where(mine(s.incomes, incomeId, userId));
+  else await db.insert(s.incomes).values({ ...values, userId });
 });
 
-export const deleteIncome = action(async (f) => {
-  await db.delete(s.incomes).where(eq(s.incomes.id, id(f)));
+export const deleteIncome = action(async (f, userId) => {
+  await db.delete(s.incomes).where(mine(s.incomes, id(f), userId));
 });
 
 // ---------- Trabajos fijos ----------
@@ -505,7 +572,7 @@ function payDayField(f: FormData) {
   return day;
 }
 
-export const saveRecurringIncome = action(async (f) => {
+export const saveRecurringIncome = action(async (f, userId) => {
   const values = {
     name: required(f, "name", "de dónde viene el ingreso"),
     amount: amount(f),
@@ -514,17 +581,20 @@ export const saveRecurringIncome = action(async (f) => {
   };
   if (str(f, "id")) {
     // El cambio aplica de acá en adelante: los cobros ya registrados no se tocan.
-    await db.update(s.recurringIncomes).set(values).where(eq(s.recurringIncomes.id, id(f)));
+    await db
+      .update(s.recurringIncomes)
+      .set(values)
+      .where(mine(s.recurringIncomes, id(f), userId));
     return;
   }
   const firstMonth = str(f, "firstMonth");
   if (!isMonth(firstMonth)) throw new FormError("Elegí desde qué mes cobrás");
   if (firstMonth < addMonths(currentMonth(), -24)) throw new FormError("El primer mes puede ser de hasta 2 años atrás");
-  await db.insert(s.recurringIncomes).values({ ...values, nextMonth: firstMonth });
+  await db.insert(s.recurringIncomes).values({ ...values, userId, nextMonth: firstMonth });
 });
 
-export const toggleRecurringIncome = action(async (f) => {
-  const [job] = await db.select().from(s.recurringIncomes).where(eq(s.recurringIncomes.id, id(f)));
+export const toggleRecurringIncome = action(async (f, userId) => {
+  const [job] = await db.select().from(s.recurringIncomes).where(mine(s.recurringIncomes, id(f), userId));
   if (!job) return;
   // Al reactivar no se cobran los meses en pausa: sigue desde el mes actual.
   const now = currentMonth();
@@ -534,16 +604,16 @@ export const toggleRecurringIncome = action(async (f) => {
       active: !job.active,
       nextMonth: !job.active && job.nextMonth < now ? now : job.nextMonth,
     })
-    .where(eq(s.recurringIncomes.id, job.id));
+    .where(mine(s.recurringIncomes, job.id, userId));
 });
 
-export const deleteRecurringIncome = action(async (f) => {
-  await db.delete(s.recurringIncomes).where(eq(s.recurringIncomes.id, id(f)));
+export const deleteRecurringIncome = action(async (f, userId) => {
+  await db.delete(s.recurringIncomes).where(mine(s.recurringIncomes, id(f), userId));
 });
 
 // ---------- Fijos ----------
 
-export const saveRecurring = action(async (f) => {
+export const saveRecurring = action(async (f, userId) => {
   const frequency = str(f, "frequency") === "anual" ? ("anual" as const) : ("mensual" as const);
   const dueDay = str(f, "dueDay") ? Number(str(f, "dueDay")) : null;
   const dueMonth = frequency === "anual" && str(f, "dueMonth") ? Number(str(f, "dueMonth")) : null;
@@ -557,33 +627,36 @@ export const saveRecurring = action(async (f) => {
     name: required(f, "name", "el nombre"),
     amount: amount(f),
     currency: currency(f),
-    categoryId: id(f, "categoryId"),
-    paymentMethodId: await requiredMethod(f),
+    categoryId: await requiredCategory(f, userId),
+    paymentMethodId: await requiredMethod(f, userId),
     frequency,
     dueDay,
     dueMonth,
     dueNote: optional(f, "dueNote"),
     createsExpense: str(f, "reminderOnly") !== "on",
   };
-  if (str(f, "id")) await db.update(s.recurrings).set(values).where(eq(s.recurrings.id, id(f)));
-  else await db.insert(s.recurrings).values(values);
+  if (str(f, "id")) await db.update(s.recurrings).set(values).where(mine(s.recurrings, id(f), userId));
+  else await db.insert(s.recurrings).values({ ...values, userId });
 });
 
-export const deleteRecurring = action(async (f) => {
-  await db.update(s.recurrings).set({ active: false }).where(eq(s.recurrings.id, id(f)));
+export const deleteRecurring = action(async (f, userId) => {
+  await db
+    .update(s.recurrings)
+    .set({ active: false })
+    .where(mine(s.recurrings, id(f), userId));
 });
 
-export const payRecurring = action(async (f) => {
+export const payRecurring = action(async (f, userId) => {
   const recurringId = id(f);
   const period = str(f, "period");
   if (!isMonth(period) && !/^\d{4}$/.test(period)) throw new FormError("Período inválido");
   const cents = amount(f);
   const paidOn = dateField(f);
-  const [rec] = await db.select().from(s.recurrings).where(eq(s.recurrings.id, recurringId));
+  const [rec] = await db.select().from(s.recurrings).where(mine(s.recurrings, recurringId, userId));
   if (!rec) throw new FormError("No se encontró el fijo");
-  const conv = await convert(f, cents, rec.currency, paidOn, "venta");
+  const conv = await convert(f, userId, cents, rec.currency, paidOn, "venta");
   // El resumen de tarjeta no genera gasto, así que no necesita elegir medio de pago.
-  const paymentMethodId = rec.createsExpense ? await requiredMethod(f) : rec.paymentMethodId;
+  const paymentMethodId = rec.createsExpense ? await requiredMethod(f, userId) : rec.paymentMethodId;
 
   await db.transaction(async (tx) => {
     let expenseId: number | null = null;
@@ -591,6 +664,7 @@ export const payRecurring = action(async (f) => {
       const [expense] = await tx
         .insert(s.expenses)
         .values({
+          userId,
           date: paidOn,
           description: rec.name,
           categoryId: rec.categoryId,
@@ -602,29 +676,32 @@ export const payRecurring = action(async (f) => {
         .returning();
       expenseId = expense.id;
     }
-    await tx.insert(s.recurringPayments).values({ recurringId, period, paidOn, amount: cents, expenseId });
+    await tx.insert(s.recurringPayments).values({ userId, recurringId, period, paidOn, amount: cents, expenseId });
     // Queda como predeterminado para los próximos pagos.
     if (paymentMethodId !== rec.paymentMethodId) {
-      await tx.update(s.recurrings).set({ paymentMethodId }).where(eq(s.recurrings.id, recurringId));
+      await tx
+        .update(s.recurrings)
+        .set({ paymentMethodId })
+        .where(mine(s.recurrings, recurringId, userId));
     }
   });
 });
 
-export const undoRecurringPayment = action(async (f) => {
+export const undoRecurringPayment = action(async (f, userId) => {
   const [payment] = await db
     .select()
     .from(s.recurringPayments)
-    .where(eq(s.recurringPayments.id, id(f)));
+    .where(mine(s.recurringPayments, id(f), userId));
   if (!payment) return;
   await db.transaction(async (tx) => {
-    await tx.delete(s.recurringPayments).where(eq(s.recurringPayments.id, payment.id));
-    if (payment.expenseId) await tx.delete(s.expenses).where(eq(s.expenses.id, payment.expenseId));
+    await tx.delete(s.recurringPayments).where(mine(s.recurringPayments, payment.id, userId));
+    if (payment.expenseId) await tx.delete(s.expenses).where(mine(s.expenses, payment.expenseId, userId));
   });
 });
 
 // ---------- Deudas ----------
 
-export const saveDebt = action(async (f) => {
+export const saveDebt = action(async (f, userId) => {
   const values = {
     direction: str(f, "direction") === "debo" ? ("debo" as const) : ("me_deben" as const),
     person: required(f, "person", "la persona"),
@@ -633,42 +710,44 @@ export const saveDebt = action(async (f) => {
     currency: currency(f),
     note: optional(f, "note"),
   };
-  if (str(f, "id")) await db.update(s.debts).set(values).where(eq(s.debts.id, id(f)));
-  else await db.insert(s.debts).values(values);
+  if (str(f, "id")) await db.update(s.debts).set(values).where(mine(s.debts, id(f), userId));
+  else await db.insert(s.debts).values({ ...values, userId });
 });
 
-export const deleteDebt = action(async (f) => {
-  await db.delete(s.debts).where(eq(s.debts.id, id(f)));
+export const deleteDebt = action(async (f, userId) => {
+  await db.delete(s.debts).where(mine(s.debts, id(f), userId));
 });
 
-export const addDebtPayment = action(async (f) => {
-  await db.insert(s.debtPayments).values({ debtId: id(f), date: dateField(f), amount: amount(f) });
+export const addDebtPayment = action(async (f, userId) => {
+  const debtId = await ownedRef(s.debts, id(f), userId, "No se encontró la deuda");
+  await db.insert(s.debtPayments).values({ userId, debtId, date: dateField(f), amount: amount(f) });
 });
 
-export const deleteDebtPayment = action(async (f) => {
-  await db.delete(s.debtPayments).where(eq(s.debtPayments.id, id(f)));
+export const deleteDebtPayment = action(async (f, userId) => {
+  await db.delete(s.debtPayments).where(mine(s.debtPayments, id(f), userId));
 });
 
 // ---------- Wishlist ----------
 
-export const saveProject = action(async (f) => {
+export const saveProject = action(async (f, userId) => {
   const name = required(f, "name", "el nombre");
-  if (str(f, "id")) await db.update(s.wishProjects).set({ name }).where(eq(s.wishProjects.id, id(f)));
-  else await db.insert(s.wishProjects).values({ name, sortOrder: 99 });
+  if (str(f, "id")) await db.update(s.wishProjects).set({ name }).where(mine(s.wishProjects, id(f), userId));
+  else await db.insert(s.wishProjects).values({ userId, name, sortOrder: 99 });
 });
 
-export const deleteProject = action(async (f) => {
-  await db.delete(s.wishProjects).where(eq(s.wishProjects.id, id(f)));
+export const deleteProject = action(async (f, userId) => {
+  await db.delete(s.wishProjects).where(mine(s.wishProjects, id(f), userId));
 });
 
-export const saveWishItem = action(async (f) => {
+export const saveWishItem = action(async (f, userId) => {
   const link = optional(f, "link");
   if (link && !/^https?:\/\//i.test(link)) throw new FormError("El link tiene que empezar con http:// o https://");
   const rawPriority = str(f, "priority");
   const priority: "alta" | "media" | "baja" =
     rawPriority === "alta" || rawPriority === "baja" ? rawPriority : "media";
+  const projectId = optionalId(f, "projectId");
   const values = {
-    projectId: optionalId(f, "projectId"),
+    projectId: projectId && (await ownedRef(s.wishProjects, projectId, userId, "Elegí un proyecto válido")),
     name: required(f, "name", "el nombre"),
     estimatedPrice: optionalAmount(f, "estimatedPrice"),
     currency: currency(f),
@@ -677,96 +756,100 @@ export const saveWishItem = action(async (f) => {
     link,
     note: optional(f, "note"),
   };
-  if (str(f, "id")) await db.update(s.wishItems).set(values).where(eq(s.wishItems.id, id(f)));
-  else await db.insert(s.wishItems).values(values);
+  if (str(f, "id")) await db.update(s.wishItems).set(values).where(mine(s.wishItems, id(f), userId));
+  else await db.insert(s.wishItems).values({ ...values, userId });
 });
 
-export const deleteWishItem = action(async (f) => {
-  await db.delete(s.wishItems).where(eq(s.wishItems.id, id(f)));
+export const deleteWishItem = action(async (f, userId) => {
+  await db.delete(s.wishItems).where(mine(s.wishItems, id(f), userId));
   return "/wishlist";
 });
 
-export const addWishStep = action(async (f) => {
+export const addWishStep = action(async (f, userId) => {
   await db.insert(s.wishSteps).values({
-    itemId: id(f),
+    userId,
+    itemId: await ownedRef(s.wishItems, id(f), userId, "No se encontró el deseo"),
     text: required(f, "text", "el paso"),
     sortOrder: Date.now() % 2_000_000_000,
   });
 });
 
-export const toggleWishStep = action(async (f) => {
+export const toggleWishStep = action(async (f, userId) => {
   await db
     .update(s.wishSteps)
     .set({ done: sql`not ${s.wishSteps.done}` })
-    .where(eq(s.wishSteps.id, id(f)));
+    .where(mine(s.wishSteps, id(f), userId));
 });
 
-export const deleteWishStep = action(async (f) => {
-  await db.delete(s.wishSteps).where(eq(s.wishSteps.id, id(f)));
+export const deleteWishStep = action(async (f, userId) => {
+  await db.delete(s.wishSteps).where(mine(s.wishSteps, id(f), userId));
 });
 
 /** Marca el deseo como comprado y lo convierte en un gasto real. */
-export const purchaseWishItem = action(async (f) => {
-  const itemId = id(f);
-  const values = await expenseValues(f);
+export const purchaseWishItem = action(async (f, userId) => {
+  const itemId = await ownedRef(s.wishItems, id(f), userId, "No se encontró el deseo");
+  const values = await expenseValues(f, userId);
   const n = installmentCount(f);
   await db.transaction(async (tx) => {
-    const [expense] = await tx.insert(s.expenses).values({ ...values, installments: n }).returning();
+    const [expense] = await tx
+      .insert(s.expenses)
+      .values({ ...values, userId, installments: n })
+      .returning();
     if (n > 1) {
-      await tx.insert(s.installmentPlans).values({ ...planValues(f, values, n), expenseId: expense.id });
+      await tx.insert(s.installmentPlans).values({ ...planValues(f, values, n), userId, expenseId: expense.id });
     }
     await tx
       .update(s.wishItems)
       .set({ purchasedExpenseId: expense.id, purchasedOn: values.date })
-      .where(eq(s.wishItems.id, itemId));
+      .where(mine(s.wishItems, itemId, userId));
   });
 });
 
 // ---------- Ajustes ----------
 
-export const saveCategory = action(async (f) => {
+export const saveCategory = action(async (f, userId) => {
   const values = { name: required(f, "name", "el nombre") };
   try {
-    if (str(f, "id")) await db.update(s.categories).set(values).where(eq(s.categories.id, id(f)));
-    else await db.insert(s.categories).values({ ...values, sortOrder: 99 });
+    if (str(f, "id")) await db.update(s.categories).set(values).where(mine(s.categories, id(f), userId));
+    else await db.insert(s.categories).values({ ...values, userId, sortOrder: 99 });
   } catch {
     throw new FormError("Ya existe una categoría con ese nombre");
   }
 });
 
-export const toggleCategoryArchived = action(async (f) => {
+export const toggleCategoryArchived = action(async (f, userId) => {
   await db
     .update(s.categories)
     .set({ archived: sql`not ${s.categories.archived}` })
-    .where(eq(s.categories.id, id(f)));
+    .where(mine(s.categories, id(f), userId));
 });
 
-export const saveMethod = action(async (f) => {
+export const saveMethod = action(async (f, userId) => {
   const type = str(f, "type");
   if (type !== "efectivo" && type !== "debito" && type !== "transferencia" && type !== "credito") {
     throw new FormError("Elegí un tipo");
   }
   const values = { name: required(f, "name", "el nombre"), type: type as typeof s.paymentMethods.$inferInsert.type };
   try {
-    if (str(f, "id")) await db.update(s.paymentMethods).set(values).where(eq(s.paymentMethods.id, id(f)));
-    else await db.insert(s.paymentMethods).values(values);
+    if (str(f, "id")) await db.update(s.paymentMethods).set(values).where(mine(s.paymentMethods, id(f), userId));
+    else await db.insert(s.paymentMethods).values({ ...values, userId });
   } catch {
     throw new FormError("Ya existe un medio de pago con ese nombre");
   }
 });
 
-export const saveDollarType = action(async (f) => {
+export const saveDollarType = action(async (f, userId) => {
   const type = str(f, "dollarType");
   if (!isDollarType(type)) throw new FormError("Elegí un tipo de dólar");
   await db
     .insert(s.settings)
-    .values({ key: "dollar_type", value: type })
-    .onConflictDoUpdate({ target: s.settings.key, set: { value: type } });
+    .values({ userId, key: "dollar_type", value: type })
+    .onConflictDoUpdate({ target: [s.settings.userId, s.settings.key], set: { value: type } });
 });
 
-export const toggleMethodArchived = action(async (f) => {
+export const toggleMethodArchived = action(async (f, userId) => {
   await db
     .update(s.paymentMethods)
     .set({ archived: sql`not ${s.paymentMethods.archived}` })
-    .where(eq(s.paymentMethods.id, id(f)));
+    .where(mine(s.paymentMethods, id(f), userId));
 });

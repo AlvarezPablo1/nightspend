@@ -1,6 +1,7 @@
 import { BellRing, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { Empty, PageTitle, SectionTitle, Stat } from "@/components/ui";
+import { currentUserId } from "@/lib/auth";
 import { currentMonth, dueText, money, monthName, monthRange, shortDate } from "@/lib/format";
 import {
   dueAlerts,
@@ -14,13 +15,14 @@ import { ensureRecurringIncomes } from "@/lib/recurring-incomes";
 export default async function HomePage() {
   const month = currentMonth();
   const { from, to } = monthRange(month);
-  await ensureRecurringIncomes();
+  const userId = await currentUserId();
+  await ensureRecurringIncomes(userId);
   const [{ available, spent, earned, fixed, installments: dueInstallments, incomplete }, alerts, recents, recurrings, installments] = await Promise.all([
-    monthAvailability(),
-    dueAlerts(),
-    expenseList({ from, to, limit: 5 }),
-    recurringStatus(month),
-    installmentStatus(1),
+    monthAvailability(userId),
+    dueAlerts(userId),
+    expenseList(userId, { from, to, limit: 5 }),
+    recurringStatus(userId, month),
+    installmentStatus(userId, 1),
   ]);
   const pending = recurrings.filter((r) => r.frequency === "mensual" && !r.payment);
   const pendingTotal = pending.filter((r) => r.currency === "ARS").reduce((sum, r) => sum + r.amount, 0);

@@ -10,7 +10,7 @@ const pesos = (cents: number | null) => (cents == null ? null : cents / 100);
 /** Evita que Excel interprete como fórmula un texto que empieza con = + - @. */
 const safe = (value: string | null) => (value && /^[=+\-@\t\r]/.test(value) ? `'${value}` : value);
 
-async function expenseRows(where?: SQL) {
+async function expenseRows(userId: number, where?: SQL) {
   const rows = await db
     .select({
       date: s.expenses.date,
@@ -27,7 +27,7 @@ async function expenseRows(where?: SQL) {
     .from(s.expenses)
     .innerJoin(s.categories, eq(s.expenses.categoryId, s.categories.id))
     .leftJoin(s.paymentMethods, eq(s.expenses.paymentMethodId, s.paymentMethods.id))
-    .where(where)
+    .where(and(eq(s.expenses.userId, userId), where))
     .orderBy(desc(s.expenses.date), desc(s.expenses.id));
   return rows.map((r) => [
     r.date,
@@ -62,8 +62,8 @@ const expenseFilterFor = (period: string | null) => {
 };
 
 /** CSV con los gastos de un mes, o de todos si `period` es null. */
-export async function buildExpensesCsv(period: string | null) {
-  const rows = await expenseRows(expenseFilterFor(period));
+export async function buildExpensesCsv(userId: number, period: string | null) {
+  const rows = await expenseRows(userId, expenseFilterFor(period));
   const csv = [EXPENSE_HEADER, ...rows]
     .map((row) => row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(";"))
     .join("\n");
@@ -71,10 +71,13 @@ export async function buildExpensesCsv(period: string | null) {
 }
 
 /** Excel de un mes (YYYY-MM), de un año (YYYY), o el backup completo si `period` es null. */
-export async function buildWorkbook(period: string | null) {
+export async function buildWorkbook(userId: number, period: string | null) {
   const month = isMonth(period) ? period : null;
   const range = period ? periodRange(period) : null;
-  const incomeFilter = range ? and(gte(s.incomes.date, range.from), lt(s.incomes.date, range.to)) : undefined;
+  const incomeFilter = and(
+    eq(s.incomes.userId, userId),
+    range ? and(gte(s.incomes.date, range.from), lt(s.incomes.date, range.to)) : undefined,
+  );
   const expenseFilter = expenseFilterFor(period);
 
   const [incomes, plans] = await Promise.all([
@@ -82,12 +85,13 @@ export async function buildWorkbook(period: string | null) {
     db
       .select({ plan: s.installmentPlans, method: s.paymentMethods.name })
       .from(s.installmentPlans)
-      .leftJoin(s.paymentMethods, eq(s.installmentPlans.paymentMethodId, s.paymentMethods.id)),
+      .leftJoin(s.paymentMethods, eq(s.installmentPlans.paymentMethodId, s.paymentMethods.id))
+      .where(eq(s.installmentPlans.userId, userId)),
   ]);
 
   const wb = new ExcelJS.Workbook();
   if (period) {
-    const summary = await getSummary(period);
+    const summary = await getSummary(userId, period);
     addSheet(wb, "Resumen", [`Resumen de ${summary.label}`, "Monto"], [
       ["Gastado", pesos(summary.spent)],
       ["Ingresos", pesos(summary.earned)],
@@ -99,7 +103,7 @@ export async function buildWorkbook(period: string | null) {
       ...summary.categories.map((c) => [c.name, pesos(c.total)]),
     ]);
   }
-  addSheet(wb, "Gastos", EXPENSE_HEADER, await expenseRows(expenseFilter));
+  addSheet(wb, "Gastos", EXPENSE_HEADER, await expenseRows(userId, expenseFilter));
   addSheet(wb, "Ingresos", ["Fecha", "De dónde viene", "Tipo", "Monto", "Moneda", "Monto en pesos", "Nota"],
     incomes.map((i) => [i.date, safe(i.description), i.type, pesos(i.amount), i.currency, pesos(i.amountArs), safe(i.note)]));
 
@@ -114,12 +118,12 @@ export async function buildWorkbook(period: string | null) {
     addSheet(wb, "Cuotas", ["Descripción", "Medio de pago", "Cuota", "Monto de la cuota", "Moneda", "La paga"], rows);
   } else {
     const [jobs, recurrings, debts, debtPayments, wish, steps] = await Promise.all([
-      db.select().from(s.recurringIncomes),
-      db.select().from(s.recurrings),
-      db.select().from(s.debts),
-      db.select().from(s.debtPayments),
-      db.select().from(s.wishItems),
-      db.select().from(s.wishSteps),
+      db.select().from(s.recurringIncomes).where(eq(s.recurringIncomes.userId, userId)),
+      db.select().from(s.recurrings).where(eq(s.recurrings.userId, userId)),
+      db.select().from(s.debts).where(eq(s.debts.userId, userId)),
+      db.select().from(s.debtPayments).where(eq(s.debtPayments.userId, userId)),
+      db.select().from(s.wishItems).where(eq(s.wishItems.userId, userId)),
+      db.select().from(s.wishSteps).where(eq(s.wishSteps.userId, userId)),
     ]);
     addSheet(wb, "Trabajos fijos", ["De dónde viene", "Monto", "Moneda", "Día de cobro", "Próximo mes", "Activo"],
       jobs.map((j) => [safe(j.name), pesos(j.amount), j.currency, j.payDay, j.nextMonth, j.active ? "sí" : "no"]));

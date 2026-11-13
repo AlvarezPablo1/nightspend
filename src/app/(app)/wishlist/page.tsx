@@ -1,4 +1,4 @@
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { ChevronRight, FolderPlus, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { deleteProject, saveProject, saveWishItem } from "@/app/actions";
@@ -7,15 +7,21 @@ import { WishFields } from "@/components/wish-fields";
 import { Empty, PageTitle, Progress, SectionTitle } from "@/components/ui";
 import { db } from "@/db";
 import { wishItems, wishProjects, wishSteps } from "@/db/schema";
+import { currentUserId } from "@/lib/auth";
 import { money } from "@/lib/format";
 
 const PRIORITY_ORDER = { alta: 0, media: 1, baja: 2 };
 
 export default async function WishlistPage() {
+  const userId = await currentUserId();
   const [projects, items, steps] = await Promise.all([
-    db.select().from(wishProjects).orderBy(asc(wishProjects.sortOrder), asc(wishProjects.id)),
-    db.select().from(wishItems),
-    db.select().from(wishSteps),
+    db
+      .select()
+      .from(wishProjects)
+      .where(eq(wishProjects.userId, userId))
+      .orderBy(asc(wishProjects.sortOrder), asc(wishProjects.id)),
+    db.select().from(wishItems).where(eq(wishItems.userId, userId)),
+    db.select().from(wishSteps).where(eq(wishSteps.userId, userId)),
   ]);
 
   const pending = items

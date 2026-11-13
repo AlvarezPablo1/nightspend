@@ -2,7 +2,7 @@ import { logout } from "@/app/actions";
 import { Suspense } from "react";
 import { NavigationLoader } from "@/components/navigation-loader";
 import { Nav } from "@/components/nav";
-import { requireSession } from "@/lib/auth";
+import { currentUserId, requireSession } from "@/lib/auth";
 import { today } from "@/lib/format";
 import { activeCategories, activeMethods, debtPeople, expenseSuggestions } from "@/lib/queries";
 
@@ -10,11 +10,12 @@ export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
+  const userId = await currentUserId();
   const [categories, methods, suggestions, people] = await Promise.all([
-    activeCategories(),
-    activeMethods(),
-    expenseSuggestions(),
-    debtPeople(),
+    activeCategories(userId),
+    activeMethods(userId),
+    expenseSuggestions(userId),
+    debtPeople(userId),
   ]);
   const options = {
     categories: categories.map((c) => ({ id: c.id, name: c.name })),

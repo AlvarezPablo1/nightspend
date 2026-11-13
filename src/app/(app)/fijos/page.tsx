@@ -2,6 +2,7 @@ import { Check, Plus, Trash2, Undo2 } from "lucide-react";
 import { deleteRecurring, payRecurring, saveRecurring, undoRecurringPayment } from "@/app/actions";
 import { ActionButton, ActionForm, AmountField, EditSheet, Field, MethodSelect, Sheet } from "@/components/forms";
 import { Empty, PageTitle, Tabs } from "@/components/ui";
+import { currentUserId } from "@/lib/auth";
 import { currentMonth, dueText, money, moneyInput, monthName, monthShort, shortDate, today } from "@/lib/format";
 import { activeCategories, activeMethods, dueAlerts, recurringStatus } from "@/lib/queries";
 
@@ -89,11 +90,12 @@ function dueLabel(r: Recurring) {
 export default async function RecurringPage({ searchParams }: { searchParams: Promise<{ tipo?: string }> }) {
   const frequency = (await searchParams).tipo === "anual" ? "anual" : "mensual";
   const month = currentMonth();
+  const userId = await currentUserId();
   const [all, categories, methods, alerts] = await Promise.all([
-    recurringStatus(month),
-    activeCategories(),
-    activeMethods(),
-    dueAlerts(),
+    recurringStatus(userId, month),
+    activeCategories(userId),
+    activeMethods(userId),
+    dueAlerts(userId),
   ]);
   const items = all
     .filter((r) => r.frequency === frequency)

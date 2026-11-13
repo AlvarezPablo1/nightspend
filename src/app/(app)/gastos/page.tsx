@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Empty, MonthNav, PageTitle, Tabs, YearNav } from "@/components/ui";
 import { SearchInput } from "@/components/search-input";
 import { ViewToggle } from "@/components/view-toggle";
+import { currentUserId } from "@/lib/auth";
 import { VIEW_COOKIE } from "@/lib/expense-view";
 import { currentMonth, dayLabel, isMonth, isYear, money, monthName, monthRange, yearsOf } from "@/lib/format";
 import { activeCategories, availableMonths, expenseList, monthlyTotals, recurringStatus } from "@/lib/queries";
@@ -62,7 +63,8 @@ function ExpenseTable({ rows }: { rows: Awaited<ReturnType<typeof expenseList>> 
 }
 
 export default async function ExpensesPage({ searchParams }: { searchParams: Promise<Params> }) {
-  const [params, months] = await Promise.all([searchParams, availableMonths()]);
+  const userId = await currentUserId();
+  const [params, months] = await Promise.all([searchParams, availableMonths(userId)]);
   const years = yearsOf(months);
   if (params.anio && !years.includes(params.anio)) redirect("/gastos");
   if (params.mes && !months.includes(params.mes)) redirect("/gastos");
@@ -78,7 +80,10 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
 
   if (isYear(params.anio)) {
     const year = params.anio;
-    const [totals, recurrings] = await Promise.all([monthlyTotals(params.anio), recurringStatus(currentMonth())]);
+    const [totals, recurrings] = await Promise.all([
+      monthlyTotals(userId, params.anio),
+      recurringStatus(userId, currentMonth()),
+    ]);
     const annual = recurrings.filter((r) => r.frequency === "anual");
     const yearTotal = totals.reduce((sum, m) => sum + m.total, 0);
     return (
@@ -123,8 +128,8 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
   const categoryId = Number(params.cat) || undefined;
   const q = params.q?.trim() || undefined;
   const [categories, list, cookieStore] = await Promise.all([
-    activeCategories(),
-    expenseList({ from, to, categoryId, q }),
+    activeCategories(userId),
+    expenseList(userId, { from, to, categoryId, q }),
     cookies(),
   ]);
   const view = cookieStore.get(VIEW_COOKIE)?.value === "lista" ? "lista" : "tabla";

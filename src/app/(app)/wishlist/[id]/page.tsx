@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { Check, ChevronLeft, ExternalLink, ShoppingBag, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -16,18 +16,31 @@ import { WishFields } from "@/components/wish-fields";
 import { Empty, Progress, SectionTitle } from "@/components/ui";
 import { db } from "@/db";
 import { wishItems, wishProjects, wishSteps } from "@/db/schema";
+import { currentUserId } from "@/lib/auth";
 import { money, moneyInput, shortDate, today } from "@/lib/format";
 import { activeCategories, activeMethods } from "@/lib/queries";
 
 export default async function WishItemPage({ params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
+  const userId = await currentUserId();
   const [[item], steps, projects, categories, methods] = await Promise.all([
-    db.select().from(wishItems).where(eq(wishItems.id, id)),
-    db.select().from(wishSteps).where(eq(wishSteps.itemId, id)).orderBy(asc(wishSteps.sortOrder), asc(wishSteps.id)),
-    db.select().from(wishProjects).orderBy(asc(wishProjects.sortOrder)),
-    activeCategories(),
-    activeMethods(),
+    db
+      .select()
+      .from(wishItems)
+      .where(and(eq(wishItems.id, id), eq(wishItems.userId, userId))),
+    db
+      .select()
+      .from(wishSteps)
+      .where(and(eq(wishSteps.itemId, id), eq(wishSteps.userId, userId)))
+      .orderBy(asc(wishSteps.sortOrder), asc(wishSteps.id)),
+    db
+      .select()
+      .from(wishProjects)
+      .where(eq(wishProjects.userId, userId))
+      .orderBy(asc(wishProjects.sortOrder)),
+    activeCategories(userId),
+    activeMethods(userId),
   ]);
   if (!item) notFound();
 

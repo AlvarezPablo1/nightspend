@@ -1,14 +1,18 @@
 import { timingSafeEqual } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { settings } from "@/db/schema";
+import { settings, users } from "@/db/schema";
 import { buildWorkbook } from "@/lib/export";
 import { addMonths, currentMonth } from "@/lib/format";
+import { sendMail } from "@/lib/mail";
+import { PLACEHOLDER_OWNER_EMAIL } from "@/lib/owner-claim";
 import { ensureRecurringIncomes } from "@/lib/recurring-incomes";
 import { getSummary, summaryText } from "@/lib/reports";
 
 const MONTHLY_KEY = "last_monthly_report";
 const YEARLY_KEY = "last_yearly_report";
+
+type Result = "enviado" | "ya enviado" | "sin datos" | "error";
 
 function isAuthorized(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -18,64 +22,75 @@ function isAuthorized(request: Request) {
   return expected.length === received.length && timingSafeEqual(expected, received);
 }
 
-async function sendReport(period: string, key: string, apiKey: string, to: string) {
-  const [sent] = await db.select().from(settings).where(eq(settings.key, key));
+/**
+ * A quién le llega el resumen. Mientras el dueño de los datos de antes no entró por
+ * primera vez, su cuenta tiene un email provisorio: el resumen sigue yendo a BACKUP_EMAIL.
+ */
+function recipient(email: string) {
+  if (email === PLACEHOLDER_OWNER_EMAIL) return process.env.BACKUP_EMAIL || null;
+  return email.endsWith(".invalid") ? null : email;
+}
+
+async function sendReport(userId: number, to: string, period: string, key: string): Promise<Result> {
+  const [sent] = await db
+    .select()
+    .from(settings)
+    .where(and(eq(settings.userId, userId), eq(settings.key, key)));
   if (sent?.value === period) return "ya enviado";
 
+  const summary = await getSummary(userId, period);
+  // Una cuenta sin movimientos en ese período no recibe un resumen vacío.
+  if (summary.spent === 0 && summary.earned === 0) return "sin datos";
+
   const isYear = period.length === 4;
-  const summary = await getSummary(period);
-  const workbook = await buildWorkbook(period);
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(20_000),
-    body: JSON.stringify({
-      from: process.env.BACKUP_FROM ?? "Nightspend <onboarding@resend.dev>",
-      to: [to],
-      subject: isYear ? `Resumen anual ${period} · Nightspend` : `Resumen de ${summary.label} · Nightspend`,
-      text: summaryText(summary),
-      attachments: [
-        {
-          filename: isYear ? `nightspend-anual-${period}.xlsx` : `nightspend-${period}.xlsx`,
-          content: Buffer.from(workbook).toString("base64"),
-        },
-      ],
-    }),
+  const workbook = await buildWorkbook(userId, period);
+  const mail = await sendMail({
+    to,
+    subject: isYear ? `Resumen anual ${period} · Nightspend` : `Resumen de ${summary.label} · Nightspend`,
+    text: summaryText(summary),
+    attachments: [
+      {
+        filename: isYear ? `nightspend-anual-${period}.xlsx` : `nightspend-${period}.xlsx`,
+        content: Buffer.from(workbook).toString("base64"),
+      },
+    ],
   });
-  if (!response.ok) {
-    console.error("No se pudo enviar el resumen", period, response.status, await response.text());
-    return "error";
-  }
+  if (!mail.ok) return "error";
   await db
     .insert(settings)
-    .values({ key, value: period })
-    .onConflictDoUpdate({ target: settings.key, set: { value: period } });
+    .values({ userId, key, value: period })
+    .onConflictDoUpdate({ target: [settings.userId, settings.key], set: { value: period } });
   return "enviado";
 }
 
 /**
- * Resumen por mail. Vercel lo llama los días 1, 2 y 3 de cada mes: manda el mes que
- * terminó y, en enero, también el año que terminó. Cada uno sale una sola vez, y si
- * uno falla se reintenta solo al día siguiente sin repetir el otro.
+ * Resumen por mail para cada usuario. Vercel lo llama los días 1, 2 y 3 de cada mes:
+ * manda el mes que terminó y, en enero, también el año que terminó. Cada resumen sale
+ * una sola vez por usuario, y si uno falla se reintenta al día siguiente sin repetir los demás.
  */
 export async function GET(request: Request) {
   if (!isAuthorized(request)) return Response.json({ error: "No autorizado" }, { status: 401 });
+  if (!process.env.RESEND_API_KEY) return Response.json({ error: "Falta configurar el envío" }, { status: 500 });
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.BACKUP_EMAIL;
-  if (!apiKey || !to) return Response.json({ error: "Falta configurar el envío" }, { status: 500 });
-
-  await ensureRecurringIncomes();
   const previous = addMonths(currentMonth(), -1);
-  const results: Record<string, string> = {
-    [previous]: await sendReport(previous, MONTHLY_KEY, apiKey, to),
-  };
-  if (currentMonth().endsWith("-01")) {
-    const year = previous.slice(0, 4);
-    results[year] = await sendReport(year, YEARLY_KEY, apiKey, to);
+  const periods: [string, string][] = [[previous, MONTHLY_KEY]];
+  if (currentMonth().endsWith("-01")) periods.push([previous.slice(0, 4), YEARLY_KEY]);
+
+  const accounts = await db.select({ id: users.id, email: users.email }).from(users).orderBy(asc(users.id));
+  const counts: Record<Result, number> = { enviado: 0, "ya enviado": 0, "sin datos": 0, error: 0 };
+  for (const account of accounts) {
+    const to = recipient(account.email);
+    if (!to) continue;
+    try {
+      await ensureRecurringIncomes(account.id);
+      for (const [period, key] of periods) counts[await sendReport(account.id, to, period, key)]++;
+    } catch (error) {
+      // Un usuario con problemas no frena el resumen de los demás.
+      console.error("No se pudo preparar el resumen del usuario", account.id, error);
+      counts.error++;
+    }
   }
 
-  const values = Object.values(results);
-  const status = values.includes("error") ? "error" : values.includes("enviado") ? "enviado" : "ya enviado";
-  return Response.json({ status, results }, { status: status === "error" ? 502 : 200 });
+  const status = counts.error > 0 ? "error" : counts.enviado > 0 ? "enviado" : "ya enviado";
+  return Response.json({ status, counts }, { status: status === "error" ? 502 : 200 });
 }

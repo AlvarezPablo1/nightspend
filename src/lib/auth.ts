@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { guestExists } from "./guest";
-import { readSession, SESSION_COOKIE, type Session } from "./session";
+import { GUEST_USER_ID, readSession, SESSION_COOKIE, type Session } from "./session";
 
 export async function currentSession() {
   const store = await cookies();
@@ -20,7 +21,8 @@ async function userSessionIsValid(session: Extract<Session, { role: "user" }>) {
   return !!user && Math.floor(user.changedAt.getTime() / 1000) <= session.issuedAt;
 }
 
-export async function requireSession() {
+/** Se calcula una vez por pedido, aunque la pidan el layout, la página y varias consultas. */
+export const requireSession = cache(async () => {
   const session = await currentSession();
   if (!session) redirect("/login");
   // El espacio del invitado pudo haber vencido, o la sesión del usuario quedó vieja:
@@ -28,4 +30,10 @@ export async function requireSession() {
   if (session.role === "guest" && !(await guestExists(session.guestId))) redirect("/api/salir");
   if (session.role === "user" && !(await userSessionIsValid(session))) redirect("/api/salir");
   return session;
+});
+
+/** Dueño de los datos de este pedido. Todas las consultas filtran por este id. */
+export async function currentUserId() {
+  const session = await requireSession();
+  return session.role === "guest" ? GUEST_USER_ID : session.userId;
 }

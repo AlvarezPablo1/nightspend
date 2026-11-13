@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { BarChart, type Bar } from "@/components/bar-chart";
 import { Empty, MonthNav, PageTitle, Progress, SectionTitle, Stat, Tabs, YearNav } from "@/components/ui";
 import { expenses } from "@/db/schema";
+import { currentUserId } from "@/lib/auth";
 import {
   changeFrom,
   comparisonRange,
@@ -90,7 +91,8 @@ export default async function StatsPage({
 }: {
   searchParams: Promise<{ mes?: string; anio?: string }>;
 }) {
-  const [params, months] = await Promise.all([searchParams, availableMonths()]);
+  const userId = await currentUserId();
+  const [params, months] = await Promise.all([searchParams, availableMonths(userId)]);
   const years = yearsOf(months);
   if (params.anio && !years.includes(params.anio)) redirect("/estadisticas");
   if (params.mes && !months.includes(params.mes)) redirect("/estadisticas");
@@ -109,9 +111,9 @@ export default async function StatsPage({
     const from = `${year}-01-01`;
     const to = `${Number(year) + 1}-01-01`;
     const [totals, categories, top] = await Promise.all([
-      monthlyTotals(year),
-      byCategory(from, to),
-      topExpenses(from, to),
+      monthlyTotals(userId, year),
+      byCategory(userId, from, to),
+      topExpenses(userId, from, to),
     ]);
     const total = totals.reduce((sum, m) => sum + m.total, 0);
     const average = totals.length ? total / totals.length : 0;
@@ -168,11 +170,11 @@ export default async function StatsPage({
     ? `los mismos días de ${monthName(previous, false)}`
     : monthName(previous, false);
   const [daily, categories, top, prevTotal, prevCategories] = await Promise.all([
-    dailyTotals(month),
-    byCategory(from, to),
-    topExpenses(from, to),
-    totalForRange(expenses, comparison.from, comparison.to),
-    hasPrevious ? byCategory(comparison.from, comparison.to) : undefined,
+    dailyTotals(userId, month),
+    byCategory(userId, from, to),
+    topExpenses(userId, from, to),
+    totalForRange(userId, expenses, comparison.from, comparison.to),
+    hasPrevious ? byCategory(userId, comparison.from, comparison.to) : undefined,
   ]);
   const total = daily.reduce((sum, d) => sum + d.total, 0);
 

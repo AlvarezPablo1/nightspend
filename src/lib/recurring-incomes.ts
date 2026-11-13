@@ -16,8 +16,11 @@ export function payDate(month: string, payDay: number) {
  * por mes: dos cargas simultáneas no duplican, y un ingreso borrado a mano no vuelve.
  * Se ejecuta como máximo una vez por pedido. Devuelve los trabajos que quedaron pendientes.
  */
-export const ensureRecurringIncomes = cache(async () => {
-  const jobs = await db.select().from(recurringIncomes).where(eq(recurringIncomes.active, true));
+export const ensureRecurringIncomes = cache(async (userId: number) => {
+  const jobs = await db
+    .select()
+    .from(recurringIncomes)
+    .where(and(eq(recurringIncomes.userId, userId), eq(recurringIncomes.active, true)));
   const now = currentMonth();
   const todayDate = today();
   const failed: string[] = [];
@@ -31,7 +34,7 @@ export const ensureRecurringIncomes = cache(async () => {
       let rate: string | null = null;
       let amountArs = job.amount;
       if (job.currency === "USD") {
-        const quote = await lookupRate(date, "compra");
+        const quote = await lookupRate(userId, date, "compra");
         // Sin cotización no se inventa un monto: se reintenta en la próxima visita.
         if (!quote) {
           failed.push(job.name);
@@ -52,6 +55,7 @@ export const ensureRecurringIncomes = cache(async () => {
         await tx
           .insert(incomes)
           .values({
+            userId,
             date,
             description: job.name,
             type: "fijo",

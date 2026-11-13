@@ -50,7 +50,7 @@ Cada cambio que llega a `main` se publica solo en Vercel. Las migraciones de la 
 
 ## Resúmenes por mail
 
-Vercel llama a `/api/cron/backup` los días 1, 2 y 3 de cada mes. Envía con Resend el resumen del mes que terminó y, en enero, también el del año anterior, con su Excel. Cada uno sale una sola vez, y si falla se reintenta al día siguiente. Necesita `CRON_SECRET`, `RESEND_API_KEY` y `BACKUP_EMAIL`.
+Vercel llama a `/api/cron/backup` los días 1, 2 y 3 de cada mes. Le envía a cada usuario, con Resend, el resumen del mes que terminó y, en enero, también el del año anterior, con su Excel. Las cuentas sin movimientos en ese período no reciben nada. Cada resumen sale una sola vez, y si falla se reintenta al día siguiente. Necesita `CRON_SECRET` y `RESEND_API_KEY`, y `BACKUP_FROM` con un dominio verificado en Resend para poder escribirle a cualquier email.
 
 ## Reglas de cálculo
 

@@ -3,16 +3,16 @@ import * as s from "@/db/schema";
 import { changeFrom, comparisonRange, money, monthName, periodRange } from "./format";
 
 /** Resumen de un mes (YYYY-MM) o de un año (YYYY), en pesos. */
-export async function getSummary(period: string) {
+export async function getSummary(userId: number, period: string) {
   const { from, to } = periodRange(period);
   const isYear = period.length === 4;
   const comparison = isYear ? null : comparisonRange(period);
   const [spent, earned, categories, months, previousCategories] = await Promise.all([
-    totalForRange(s.expenses, from, to),
-    totalForRange(s.incomes, from, to),
-    byCategory(from, to),
-    isYear ? monthlyTotals(period) : Promise.resolve([]),
-    comparison ? byCategory(comparison.from, comparison.to) : Promise.resolve([]),
+    totalForRange(userId, s.expenses, from, to),
+    totalForRange(userId, s.incomes, from, to),
+    byCategory(userId, from, to),
+    isYear ? monthlyTotals(userId, period) : Promise.resolve([]),
+    comparison ? byCategory(userId, comparison.from, comparison.to) : Promise.resolve([]),
   ]);
   const sortedMonths = [...months].sort((a, b) => a.month.localeCompare(b.month));
   return {

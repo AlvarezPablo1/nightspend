@@ -2,6 +2,7 @@ import { Plus, Trash2, X } from "lucide-react";
 import { addDebtPayment, deleteDebt, deleteDebtPayment, saveDebt } from "@/app/actions";
 import { ActionButton, ActionForm, AmountField, EditSheet, Field, Sheet } from "@/components/forms";
 import { Empty, PageTitle, Progress, SectionTitle } from "@/components/ui";
+import { currentUserId } from "@/lib/auth";
 import { money, moneyInput, shortDate, today } from "@/lib/format";
 import { debtStatus } from "@/lib/queries";
 
@@ -155,7 +156,7 @@ function DebtSection({ title, empty, debts }: { title: string; empty: string; de
 }
 
 export default async function DebtsPage() {
-  const debts = await debtStatus();
+  const debts = await debtStatus(await currentUserId());
   const iOwe = debts.filter((d) => d.direction === "debo");
   const owedToMe = debts.filter((d) => d.direction === "me_deben");
 

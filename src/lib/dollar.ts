@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { settings } from "@/db/schema";
@@ -44,14 +44,17 @@ export function isDollarType(value: unknown): value is DollarType {
   return typeof value === "string" && value in DOLLAR_TYPES;
 }
 
-export async function getDollarType(): Promise<DollarType> {
-  const [row] = await db.select().from(settings).where(eq(settings.key, "dollar_type"));
+export async function getDollarType(userId: number): Promise<DollarType> {
+  const [row] = await db
+    .select()
+    .from(settings)
+    .where(and(eq(settings.userId, userId), eq(settings.key, "dollar_type")));
   return isDollarType(row?.value) ? row.value : DEFAULT_DOLLAR_TYPE;
 }
 
 /** Cotización de la fecha pedida. Devuelve null si el servicio no responde. */
-export async function lookupRate(date: string, side: RateSide): Promise<RateResult | null> {
-  const type = await getDollarType();
+export async function lookupRate(userId: number, date: string, side: RateSide): Promise<RateResult | null> {
+  const type = await getDollarType(userId);
   const result = (rate: number, usedDate: string) => ({
     rate,
     date: usedDate,
