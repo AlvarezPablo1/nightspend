@@ -194,9 +194,43 @@ export const settings = pgTable("settings", {
   value: text().notNull(),
 });
 
+// Ya no se usa: la reemplaza auth_attempts. Se borra en una migración aparte.
 export const loginFailures = pgTable("login_failures", {
   id: serial().primaryKey(),
   at: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });
+
+export const users = pgTable("users", {
+  id: serial().primaryKey(),
+  // Siempre en minúsculas, para que "Ana@" y "ana@" sean la misma cuenta.
+  email: text().notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  // Las sesiones anteriores a este momento dejan de valer (al cambiar la contraseña).
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const passwordResets = pgTable("password_resets", {
+  id: serial().primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  // Se guarda el hash del token, nunca el token: el link solo existe en el mail.
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+});
+
+/** Intentos de login, registro y recuperación, para limitar abusos por email o por IP. */
+export const authAttempts = pgTable(
+  "auth_attempts",
+  {
+    id: serial().primaryKey(),
+    kind: text().notNull(),
+    key: text().notNull(),
+    at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("auth_attempts_lookup_idx").on(t.kind, t.key, t.at)],
+);
 
 export type Currency = "ARS" | "USD";
