@@ -7,6 +7,8 @@ import { logout } from "@/app/actions";
 import { MORE_LINKS } from "@/lib/more-links";
 import { ExpenseForm, type ExpenseOptions } from "./expense-form";
 import { Sheet } from "./forms";
+import { Glow } from "./glow";
+import { Logo } from "./logo";
 
 const MAIN = [
   { href: "/", label: "Inicio", icon: Home },
@@ -39,8 +41,12 @@ export function Nav({ options }: { options: ExpenseOptions }) {
   return (
     <>
       {/* Compu: barra lateral */}
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-line p-4 md:flex">
-        <p className="mb-5 px-3 pt-2 text-lg font-semibold">Nightspend</p>
+      <aside className="fixed inset-y-0 left-0 hidden w-60 isolate flex-col overflow-hidden border-r border-line bg-surface p-4 md:flex">
+        <Glow />
+        <p className="mb-5 flex items-center gap-2.5 px-3 pt-2 text-lg font-semibold">
+          <Logo className="h-6 w-6 text-accent" />
+          Nightspend
+        </p>
         <Sheet
           title="Nuevo gasto"
           triggerClassName="btn btn-primary mb-4 w-full"
@@ -79,7 +85,8 @@ export function Nav({ options }: { options: ExpenseOptions }) {
       </aside>
 
       {/* Celular: barra inferior con el + al medio */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 isolate flex items-center overflow-hidden border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        <Glow />
         {tab("/", "Inicio", Home, pathname === "/")}
         {tab("/gastos", "Gastos", Receipt, isActive(pathname, "/gastos"))}
         <div className="flex flex-1 justify-center">
