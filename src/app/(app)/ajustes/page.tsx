@@ -139,6 +139,11 @@ export default async function SettingsPage() {
               })}
             </select>
           </Field>
+          {Object.keys(rates).length === 0 && (
+            <p role="status" className="text-xs text-warn">
+              No pude obtener las cotizaciones de hoy. Si cargás algo en dólares, vas a poder escribir la cotización a mano.
+            </p>
+          )}
           <p className="text-xs text-muted">
             Se usa la cotización del día de cada movimiento: venta en los gastos y compra en los ingresos. Lo que ya está cargado conserva su cotización.
           </p>

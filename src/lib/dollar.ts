@@ -22,16 +22,22 @@ export type RateResult = { rate: number; date: string; type: DollarType; label: 
 
 const TODAY_URL = "https://dolarapi.com/v1/dolares";
 const HISTORY_URL = "https://api.argentinadatos.com/v1/cotizaciones/dolares";
-const TIMEOUT_MS = 4000;
+// Tiempo máximo de toda la búsqueda, no de cada pedido: si se pasa, se ofrece cargarla a mano.
+const TIMEOUT_MS = 5000;
 // Fines de semana y feriados pueden no tener cotización: se usa la última anterior.
 const MAX_DAYS_BACK = 6;
 
 const quote = z.object({ compra: z.number().positive(), venta: z.number().positive() });
 
-async function getJson(url: string) {
-  const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
+async function getJson(url: string, signal: AbortSignal) {
+  const response = await fetch(url, { cache: "no-store", signal });
   if (!response.ok) return null;
   return response.json();
+}
+
+/** Que el servicio no responda es esperable: se avisa en la pantalla, no es un error de la app. */
+function warnUnavailable(error: unknown) {
+  console.warn("Cotización del dólar no disponible:", error instanceof Error ? error.message : error);
 }
 
 export function isDollarType(value: unknown): value is DollarType {
@@ -53,19 +59,20 @@ export async function lookupRate(date: string, side: RateSide): Promise<RateResu
     label: DOLLAR_TYPES[type],
   });
 
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
   try {
     if (date >= today()) {
-      const parsed = quote.safeParse(await getJson(`${TODAY_URL}/${type}`));
+      const parsed = quote.safeParse(await getJson(`${TODAY_URL}/${type}`, signal));
       return parsed.success ? result(parsed.data[side], today()) : null;
     }
     for (let back = 0; back <= MAX_DAYS_BACK; back++) {
       const candidate = addDays(date, -back);
-      const parsed = quote.safeParse(await getJson(`${HISTORY_URL}/${type}/${candidate.replaceAll("-", "/")}`));
+      const parsed = quote.safeParse(await getJson(`${HISTORY_URL}/${type}/${candidate.replaceAll("-", "/")}`, signal));
       if (parsed.success) return result(parsed.data[side], candidate);
     }
     return null;
   } catch (error) {
-    console.error("No se pudo obtener la cotización del dólar", error);
+    warnUnavailable(error);
     return null;
   }
 }
@@ -75,10 +82,11 @@ export async function todayRates(): Promise<Partial<Record<DollarType, number>>>
   try {
     const parsed = z
       .array(quote.extend({ casa: z.string() }))
-      .safeParse(await getJson(TODAY_URL));
+      .safeParse(await getJson(TODAY_URL, AbortSignal.timeout(TIMEOUT_MS)));
     if (!parsed.success) return {};
     return Object.fromEntries(parsed.data.map((q) => [q.casa, q.venta]));
-  } catch {
+  } catch (error) {
+    warnUnavailable(error);
     return {};
   }
 }
