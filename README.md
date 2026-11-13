@@ -42,6 +42,8 @@ npm run dev
 
 La base principal arranca vacía, porque el importador de datos personales no forma parte del repositorio. Para ver la app con contenido, usá "Entrar como invitado".
 
+Para traer a la base local lo que cargaste en la app publicada, corré `npm run db:pull`. Lee la base de producción sin modificarla y reemplaza la local; antes guarda una copia de la local en `data/backups/`. Necesita Docker y la CLI de Vercel con el proyecto vinculado.
+
 ## Publicación
 
 Cada cambio que llega a `main` se publica solo en Vercel. Las migraciones de la base se aplican aparte, con `npm run db:migrate`.

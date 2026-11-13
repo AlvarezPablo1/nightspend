@@ -8,6 +8,7 @@
     "start": "next start",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:pull": "bash scripts/db-pull.sh",
     "hash-password": "tsx scripts/hash-password.ts",
     "typecheck": "tsc --noEmit"
   },
