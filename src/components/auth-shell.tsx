@@ -95,7 +95,7 @@ function AuthArt() {
 }
 
 /**
- * Marco común de las pantallas sin sesión: login, registro y recuperar la contraseña.
+ * Marco común de las pantallas sin sesión: login y registro.
  * En la compu, la pantalla se parte al medio: la ilustración a la izquierda y el formulario a la derecha.
  */
 export function AuthShell({ title, children }: { title: string; children: ReactNode }) {

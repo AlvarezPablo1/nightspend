@@ -20,7 +20,6 @@ export default function LoginPage() {
       </ActionForm>
       <div className="mt-2 flex flex-wrap justify-between gap-x-4">
         <AuthLink href="/registro">Crear una cuenta</AuthLink>
-        <AuthLink href="/recuperar">Olvidé mi contraseña</AuthLink>
       </div>
 
       {guestModeEnabled() && (

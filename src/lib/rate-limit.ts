@@ -3,15 +3,13 @@ import { headers } from "next/headers";
 import { db } from "@/db";
 import { authAttempts } from "@/db/schema";
 
-export type AttemptKind = "login-email" | "login-ip" | "register-ip" | "reset-email" | "reset-ip";
+export type AttemptKind = "login-email" | "login-ip" | "register-ip";
 
 /** Límites por tipo: cuántos intentos se permiten dentro de la ventana. */
 const LIMITS: Record<AttemptKind, { max: number; minutes: number }> = {
   "login-email": { max: 5, minutes: 15 },
   "login-ip": { max: 20, minutes: 15 },
   "register-ip": { max: 5, minutes: 60 },
-  "reset-email": { max: 3, minutes: 60 },
-  "reset-ip": { max: 10, minutes: 60 },
 };
 
 const windowStart = (kind: AttemptKind) => new Date(Date.now() - LIMITS[kind].minutes * 60_000);

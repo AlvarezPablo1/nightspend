@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { readSession, SESSION_COOKIE } from "@/lib/session";
 
 /** Pantallas que se usan sin sesión. Con sesión, mandan al inicio. */
-const AUTH_PAGES = new Set(["/login", "/registro", "/recuperar", "/restablecer"]);
+const AUTH_PAGES = new Set(["/login", "/registro"]);
 
 export async function proxy(request: NextRequest) {
   // El backup mensual no tiene sesión: se autentica con su propio secreto.

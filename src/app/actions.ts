@@ -1,9 +1,8 @@
 "use server";
 
-import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, gte, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect, RedirectType } from "next/navigation";
 import { db } from "@/db";
 import * as s from "@/db/schema";
@@ -13,7 +12,6 @@ import { createStarterData } from "@/lib/starter-data";
 import { createGuest, destroyGuest, GuestLimitError, guestModeEnabled } from "@/lib/guest";
 import { isDollarType, lookupRate, type RateSide } from "@/lib/dollar";
 import { addMonths, currentMonth, isDate, isMonth, parseMoney, today } from "@/lib/format";
-import { sendMail } from "@/lib/mail";
 import { claimOwnerData, isUnclaimedOwnerEmail } from "@/lib/owner-claim";
 import { hashPassword, normalizeEmail, passwordProblem, verifyAgainstNothing, verifyPassword } from "@/lib/password";
 import { clearAttempts, clientIp, isLimited, recordAttempt } from "@/lib/rate-limit";
@@ -166,7 +164,6 @@ const password = (f: FormData, k = "password") => {
 };
 
 const TOO_MANY = "Demasiados intentos. Probá de nuevo en un rato.";
-const RESET_HOURS = 1;
 
 export async function login(form: FormData): Promise<ActionResult> {
   const email = normalizeEmail(str(form, "email"));
@@ -218,85 +215,6 @@ export async function register(form: FormData): Promise<ActionResult> {
   });
   if (!user) return { error: "Ya hay una cuenta con ese email. Entrá o recuperá tu contraseña." };
   await recordAttempt("register-ip", ip);
-  await setSessionCookie(await signUserSession(user.id), SESSION_DAYS * 86_400);
-  redirect("/");
-}
-
-const tokenHash = (token: string) => createHash("sha256").update(token).digest("base64url");
-
-async function appUrl() {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
-  const h = await headers();
-  return `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
-}
-
-/** Siempre termina igual, exista o no la cuenta, para no revelar qué emails están registrados. */
-export async function requestPasswordReset(form: FormData): Promise<ActionResult> {
-  const email = normalizeEmail(str(form, "email"));
-  if (!email) return { error: "Revisá el email" };
-  const ip = await clientIp();
-  if ((await isLimited("reset-email", email)) || (await isLimited("reset-ip", ip))) return { error: TOO_MANY };
-  await recordAttempt("reset-email", email);
-  await recordAttempt("reset-ip", ip);
-
-  const [user] = await db.select({ id: s.users.id }).from(s.users).where(eq(s.users.email, email));
-  if (user) {
-    const token = randomBytes(32).toString("base64url");
-    // Un link nuevo anula los anteriores que no se usaron.
-    await db.delete(s.passwordResets).where(eq(s.passwordResets.userId, user.id));
-    await db.insert(s.passwordResets).values({
-      userId: user.id,
-      tokenHash: tokenHash(token),
-      expiresAt: new Date(Date.now() + RESET_HOURS * 3_600_000),
-    });
-    const link = `${await appUrl()}/restablecer?token=${token}`;
-    const sent = await sendMail({
-      to: email,
-      subject: "Recuperar tu contraseña · Nightspend",
-      text: `Para elegir una contraseña nueva, entrá a este link:\n\n${link}\n\nVence en ${RESET_HOURS} hora. Si no lo pediste, ignorá este mail: tu contraseña no cambia.`,
-    });
-    // Sin Resend configurado (en tu compu) el link se muestra en la consola del servidor.
-    if (!sent.ok && sent.reason === "sin-configurar" && process.env.NODE_ENV !== "production") {
-      console.info(`Link para recuperar la contraseña de ${email}: ${link}`);
-    }
-  }
-  redirect("/recuperar?enviado=1");
-}
-
-export async function resetPassword(form: FormData): Promise<ActionResult> {
-  const problem = passwordProblem(password(form));
-  if (problem) return { error: problem };
-  const [reset] = await db
-    .select()
-    .from(s.passwordResets)
-    .where(
-      and(
-        eq(s.passwordResets.tokenHash, tokenHash(str(form, "token"))),
-        isNull(s.passwordResets.usedAt),
-        gt(s.passwordResets.expiresAt, new Date()),
-      ),
-    );
-  if (!reset) return { error: "El link venció o ya se usó. Pedí uno nuevo." };
-
-  const user = await db.transaction(async (tx) => {
-    // Se marca como usado solo si nadie lo usó en el medio: un link sirve una sola vez.
-    const used = await tx
-      .update(s.passwordResets)
-      .set({ usedAt: new Date() })
-      .where(and(eq(s.passwordResets.id, reset.id), isNull(s.passwordResets.usedAt)))
-      .returning({ id: s.passwordResets.id });
-    if (used.length === 0) return null;
-    const [updated] = await tx
-      .update(s.users)
-      .set({ passwordHash: await hashPassword(password(form)), passwordChangedAt: new Date() })
-      .where(eq(s.users.id, reset.userId))
-      .returning({ id: s.users.id, email: s.users.email });
-    return updated ?? null;
-  });
-  if (!user) return { error: "El link venció o ya se usó. Pedí uno nuevo." };
-
-  await clearAttempts("login-email", user.email);
-  // Las demás sesiones abiertas quedan cerradas, porque son anteriores al cambio.
   await setSessionCookie(await signUserSession(user.id), SESSION_DAYS * 86_400);
   redirect("/");
 }
