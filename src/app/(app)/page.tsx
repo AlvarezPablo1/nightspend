@@ -1,4 +1,4 @@
-import { BellRing } from "lucide-react";
+import { BellRing, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { Empty, PageTitle, SectionTitle, Stat } from "@/components/ui";
 import { currentMonth, dueText, money, monthName, monthRange, shortDate } from "@/lib/format";
@@ -25,10 +25,31 @@ export default async function HomePage() {
   const pending = recurrings.filter((r) => r.frequency === "mensual" && !r.payment);
   const pendingTotal = pending.filter((r) => r.currency === "ARS").reduce((sum, r) => sum + r.amount, 0);
   const installmentsThisMonth = installments.schedule[0]?.total ?? 0;
+  // Vienen ordenadas: primero lo vencido, después lo que vence antes.
+  const nextDue = alerts[0];
+  const overdue = nextDue && nextDue.days < 0;
 
   return (
     <>
       <PageTitle title={monthName(month).replace(/^./, (c) => c.toUpperCase())} />
+
+      {nextDue && (
+        <Link
+          href={nextDue.frequency === "anual" ? "/fijos?tipo=anual" : "/fijos"}
+          aria-label={`Próximo vencimiento: ${nextDue.name}, ${dueText(nextDue.days).toLowerCase()}`}
+          className={`mb-3 flex items-center gap-3 rounded-xl border px-4 py-3 ${
+            overdue ? "border-bad/40 bg-bad/10" : "border-warn/40 bg-warn/10"
+          }`}
+        >
+          <BellRing size={18} className={`shrink-0 ${overdue ? "text-bad" : "text-warn"}`} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate">{nextDue.name}</p>
+            <p className={`text-xs ${overdue ? "text-bad" : "text-warn"}`}>{dueText(nextDue.days)}</p>
+          </div>
+          <span className="num shrink-0">{money(nextDue.amount, nextDue.currency)}</span>
+          <ChevronRight size={16} className="shrink-0 text-muted" />
+        </Link>
+      )}
 
       <section className="card mb-3">
         <p className="text-[13px] text-muted">{available < 0 ? "Te pasaste este mes" : "Te queda disponible"}</p>
@@ -42,29 +63,9 @@ export default async function HomePage() {
         </p>
       </section>
 
-      {alerts.length > 0 && (
-        <section className="card mb-3 py-1" aria-label="Pagos por vencer">
-          {alerts.map((a) => (
-            <Link key={`${a.id}-${a.period}`} href={a.frequency === "anual" ? "/fijos?tipo=anual" : "/fijos"} className="row">
-              <div className="flex min-w-0 items-center gap-3">
-                <BellRing size={18} className={`shrink-0 ${a.days < 0 ? "text-bad" : "text-warn"}`} />
-                <div className="min-w-0">
-                  <p className="truncate">{a.name}</p>
-                  <p className={`text-xs ${a.days < 0 ? "text-bad" : "text-warn"}`}>{dueText(a.days)}</p>
-                </div>
-              </div>
-              <span className="num shrink-0">{money(a.amount, a.currency)}</span>
-            </Link>
-          ))}
-        </section>
-      )}
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <div className="col-span-2 md:col-span-1">
-          <Stat label="Gastado" value={money(spent)} />
-        </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Gastado" value={money(spent)} />
         <Stat label="Ingresos" value={money(earned)} />
-        <Stat label="Balance" value={money(earned - spent)} />
       </div>
 
       <SectionTitle
