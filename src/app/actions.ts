@@ -13,6 +13,7 @@ import { createGuest, destroyGuest, GuestLimitError, guestModeEnabled } from "@/
 import { isDollarType, lookupRate, type RateSide } from "@/lib/dollar";
 import { addMonths, currentMonth, isDate, isMonth, parseMoney, today } from "@/lib/format";
 import { sendMail } from "@/lib/mail";
+import { claimOwnerData, isUnclaimedOwnerEmail } from "@/lib/owner-claim";
 import { hashPassword, normalizeEmail, passwordProblem, verifyAgainstNothing, verifyPassword } from "@/lib/password";
 import { clearAttempts, clientIp, isLimited, recordAttempt } from "@/lib/rate-limit";
 import {
@@ -139,6 +140,14 @@ export async function login(form: FormData): Promise<ActionResult> {
   if ((await isLimited("login-email", email)) || (await isLimited("login-ip", ip))) return { error: TOO_MANY };
 
   const [user] = await db.select().from(s.users).where(eq(s.users.email, email));
+  if (!user) {
+    // El dueño de antes de los usuarios entra con su contraseña de siempre y recupera sus datos.
+    const claimedId = await claimOwnerData(email, password(form));
+    if (claimedId) {
+      await setSessionCookie(await signUserSession(claimedId), SESSION_DAYS * 86_400);
+      redirect("/");
+    }
+  }
   const valid = user
     ? await verifyPassword(password(form), user.passwordHash)
     : await verifyAgainstNothing(password(form));
@@ -160,6 +169,7 @@ export async function register(form: FormData): Promise<ActionResult> {
   if (problem) return { error: problem };
   const ip = await clientIp();
   if (await isLimited("register-ip", ip)) return { error: TOO_MANY };
+  if (await isUnclaimedOwnerEmail(email)) return { error: "Ya hay una cuenta con ese email. Entrá con tu contraseña." };
 
   const [user] = await db
     .insert(s.users)

@@ -29,6 +29,13 @@
       "when": 1794587733698,
       "tag": "0003_usuarios",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794588017165,
+      "tag": "0004_usuarios_datos",
+      "breakpoints": true
     }
   ]
 }

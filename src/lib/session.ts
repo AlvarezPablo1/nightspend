@@ -8,6 +8,8 @@ export const GUEST_SESSION_HOURS = 24;
 export type Session = { role: "user"; userId: number; issuedAt: number } | { role: "guest"; guestId: string };
 
 const GUEST_ID = /^[a-f0-9]{32}$/;
+/** En el espacio de cada invitado hay un solo usuario, siempre con este id. */
+export const GUEST_USER_ID = 1;
 export const isGuestId = (id: unknown): id is string => typeof id === "string" && GUEST_ID.test(id);
 
 function key() {
